@@ -20,7 +20,7 @@
  * als Rueckfall.
  */
 
-const VERSION = "0.1.0";
+const VERSION = "0.1.1";
 const LEAFLET = "/ha_training/leaflet";
 
 const TEXT = {
@@ -255,7 +255,7 @@ class HaTrainingCard extends HTMLElement {
       <link rel="stylesheet" href="${LEAFLET}/leaflet.css?v=${VERSION}">
       <style>
         :host { display: block; }
-        ha-card { padding: 16px 18px; background: linear-gradient(180deg, var(--nachtblau-huelle-oben, var(--ha-card-background, #1b2231)) 0%, var(--nachtblau-huelle-unten, var(--ha-card-background, #171d29)) 55%); border-radius: 22px; color: var(--nachtblau-text, var(--primary-text-color, #f2f5f8)); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+        ha-card { padding: 16px 18px; background: linear-gradient(180deg, var(--nachtblau-huelle-oben, var(--ha-card-background, #1b2231)) 0%, var(--nachtblau-huelle-unten, var(--ha-card-background, #171d29)) 55%); border-radius: 22px; border: 1px solid var(--nachtblau-huelle-rand, rgba(255, 255, 255, 0.05)); box-shadow: 0 18px 44px -22px var(--nachtblau-schatten, rgba(0, 0, 0, 0.7)); color: var(--nachtblau-text, var(--primary-text-color, #f2f5f8)); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
         .kopf { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
         .kachel { width: 44px; height: 44px; border-radius: 13px; display: grid; place-items: center; flex: none; background: color-mix(in srgb, var(--nachtblau-rose, #e6a0c4) 16%, transparent); border: 1px solid color-mix(in srgb, var(--nachtblau-rose, #e6a0c4) 24%, transparent); }
         .kachel ha-icon { --mdc-icon-size: 23px; --ha-icon-display: block; color: var(--nachtblau-rose, #e6a0c4); }
