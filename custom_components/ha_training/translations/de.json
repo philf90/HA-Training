@@ -1,0 +1,86 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Training",
+        "description": "Legt eine geheime Webhook-Adresse für die REST-Automation von Health Auto Export an. Die Adresse steht nach der Einrichtung da und später unter Konfigurieren."
+      }
+    },
+    "create_entry": {
+      "default": "Webhook-Adresse für Health Auto Export (Automation REST-API, Methode POST):\n\n{url}\n\nIn Health Auto Export: Datentyp Workouts, Exportversion 2, „Include Route Data“ und „Include Workout Metrics“ an, Zeitraster Sekunden. Die Adresse geheim halten: Wer sie kennt, kann Trainings anlegen."
+    },
+    "abort": {
+      "already_configured": "Training ist schon eingerichtet.",
+      "single_instance_allowed": "Training ist schon eingerichtet."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Training",
+        "description": "Webhook-Adresse für Health Auto Export:\n\n{url}\n\nGeheim halten.",
+        "data": {
+          "keep_details": "Trainings mit Route und Verläufen"
+        },
+        "data_description": {
+          "keep_details": "Ältere Trainings behalten ihre Zusammenfassung; Route und Verläufe werden gelöscht. Eine Stunde Gehen mit einem GPS-Punkt pro Sekunde braucht rund 170 KB."
+        }
+      }
+    }
+  },
+  "entity": {
+    "event": {
+      "new_workout": {
+        "name": "Neues Training",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "neues_training": "Neues Training"
+            }
+          }
+        }
+      }
+    },
+    "sensor": {
+      "latest_start": {
+        "name": "Letztes Training"
+      },
+      "latest_distance": {
+        "name": "Letztes Training Distanz"
+      },
+      "latest_duration": {
+        "name": "Letztes Training Dauer"
+      },
+      "latest_speed": {
+        "name": "Letztes Training Tempo"
+      },
+      "latest_heart_rate_avg": {
+        "name": "Letztes Training Puls Durchschnitt"
+      },
+      "latest_heart_rate_max": {
+        "name": "Letztes Training Puls Maximum"
+      },
+      "latest_active_energy": {
+        "name": "Letztes Training aktive Energie"
+      },
+      "latest_effort": {
+        "name": "Letztes Training Anstrengung"
+      },
+      "latest_elevation_up": {
+        "name": "Letztes Training Höhenmeter"
+      },
+      "week_count": {
+        "name": "Trainings diese Woche"
+      },
+      "week_distance": {
+        "name": "Distanz diese Woche"
+      },
+      "week_duration": {
+        "name": "Trainingszeit diese Woche"
+      },
+      "week_active_energy": {
+        "name": "Aktive Energie diese Woche"
+      }
+    }
+  }
+}
