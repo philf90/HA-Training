@@ -14,7 +14,7 @@ dieser Integration. Home Assistant speichert die Trainings privat, zeigt das
 letzte Training und die Woche als Sensoren und meldet neue Trainings als
 Ereignis. Die mitgelieferte Karte zeichnet die Route auf einer Karte, nach
 Tempo oder Puls eingefärbt, mit gekoppeltem Verlauf und Kilometer-Tabelle.
-Version 0.1.0.
+Version 0.1.1.
 
 ## Inhalt
 
@@ -24,6 +24,7 @@ Version 0.1.0.
 - [Health Auto Export einstellen](#health-auto-export-einstellen)
 - [Entitäten](#entitäten)
 - [Karte „Training“](#karte-training)
+- [Aktualisieren](#aktualisieren)
 - [Datenschutz und Speicher](#datenschutz-und-speicher)
 - [Grenzen](#grenzen)
 - [Teststand](#teststand)
@@ -158,11 +159,20 @@ color_by: speed      # oder heart_rate
   überall.
 - Kilometer-Splits von Apple mit Zeit, min/km, km/h, Ø und max Puls.
 
-Farben aus dem Nachtblau-Stil (`--nachtblau-…`), ohne dieses Theme mit festen
-Werten. Im dunklen Modus wird die Karte von OpenStreetMap umgefärbt. Leaflet
+Farben, Rand und Schatten der Hülle aus dem Nachtblau-Stil (`--nachtblau-…`),
+ohne dieses Theme mit festen Werten. Im dunklen Modus wird die Karte von OpenStreetMap umgefärbt. Leaflet
 1.9.4 liegt der Integration bei (BSD-2-Lizenz, `frontend/leaflet/LICENSE`).
 Nach einem Update einmal die Seite neu laden, in der Companion App den
 Frontend-Cache zurücksetzen.
+
+## Aktualisieren
+
+HACS zeigt neue Versionen als Update an. Nach dem Herunterladen Home Assistant
+neu starten, danach einmal die Seite neu laden, in der Companion App den
+Frontend-Cache zurücksetzen.
+
+**Update auf 0.1.1:** keine Migration. Die Karte hat jetzt Rand und Schatten
+wie die übrigen Nachtblau-Hüllen.
 
 ## Datenschutz und Speicher
 
@@ -196,7 +206,8 @@ Frontend-Cache zurücksetzen.
 
 ## Teststand
 
-- **0.1.x:** 48 automatische Tests. 0.1.0: Parser (Einheiten, Pausen, Splits,
+- **0.1.x:** 48 automatische Tests. 0.1.1: Hülle der Karte mit Rand und
+  Schatten wie die Nachtblau-Hüllen (keine neuen Tests). 0.1.0: Parser (Einheiten, Pausen, Splits,
   Version 1, fehlende Felder), Webhook (neu, doppelt, geändert, kein JSON, ohne
   ID, falsche Methode, nach dem Entladen), Einrichtung und Optionen samt
   Aufbewahrung, WebSocket-API, Ereignis nur für neue Trainings, Wochensummen
