@@ -1,0 +1,50 @@
+{
+  "entity": {
+    "event": {
+      "new_workout": {
+        "default": "mdi:run"
+      }
+    },
+    "sensor": {
+      "latest_start": {
+        "default": "mdi:walk"
+      },
+      "latest_distance": {
+        "default": "mdi:map-marker-distance"
+      },
+      "latest_duration": {
+        "default": "mdi:timer-outline"
+      },
+      "latest_speed": {
+        "default": "mdi:speedometer"
+      },
+      "latest_heart_rate_avg": {
+        "default": "mdi:heart-pulse"
+      },
+      "latest_heart_rate_max": {
+        "default": "mdi:heart-flash"
+      },
+      "latest_active_energy": {
+        "default": "mdi:fire"
+      },
+      "latest_effort": {
+        "default": "mdi:gauge"
+      },
+      "latest_elevation_up": {
+        "default": "mdi:elevation-rise"
+      },
+      "week_count": {
+        "default": "mdi:counter"
+      },
+      "week_distance": {
+        "default": "mdi:map-marker-distance"
+      },
+      "week_duration": {
+        "default": "mdi:timer-sand"
+      },
+      "week_active_energy": {
+        "default": "mdi:fire"
+      }
+    }
+  }
+}

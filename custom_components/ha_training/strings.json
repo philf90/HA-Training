@@ -1,0 +1,86 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Training",
+        "description": "Creates a secret webhook address for the REST automation of Health Auto Export. The address is shown after setup and later under Configure."
+      }
+    },
+    "create_entry": {
+      "default": "Webhook address for Health Auto Export (REST API automation, method POST):\n\n{url}\n\nIn Health Auto Export: data type Workouts, export version 2, Include Route Data and Include Workout Metrics on, time grouping Seconds. Keep the address secret: anyone who knows it can add workouts."
+    },
+    "abort": {
+      "already_configured": "Training is already set up.",
+      "single_instance_allowed": "Training is already set up."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Training",
+        "description": "Webhook address for Health Auto Export:\n\n{url}\n\nKeep it secret.",
+        "data": {
+          "keep_details": "Workouts with route and charts"
+        },
+        "data_description": {
+          "keep_details": "Older workouts keep their summary; route and charts are deleted. One hour of walking with one GPS point per second needs about 170 KB."
+        }
+      }
+    }
+  },
+  "entity": {
+    "event": {
+      "new_workout": {
+        "name": "New workout",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "neues_training": "New workout"
+            }
+          }
+        }
+      }
+    },
+    "sensor": {
+      "latest_start": {
+        "name": "Latest workout"
+      },
+      "latest_distance": {
+        "name": "Latest workout distance"
+      },
+      "latest_duration": {
+        "name": "Latest workout duration"
+      },
+      "latest_speed": {
+        "name": "Latest workout speed"
+      },
+      "latest_heart_rate_avg": {
+        "name": "Latest workout average heart rate"
+      },
+      "latest_heart_rate_max": {
+        "name": "Latest workout maximum heart rate"
+      },
+      "latest_active_energy": {
+        "name": "Latest workout active energy"
+      },
+      "latest_effort": {
+        "name": "Latest workout effort"
+      },
+      "latest_elevation_up": {
+        "name": "Latest workout elevation gain"
+      },
+      "week_count": {
+        "name": "Workouts this week"
+      },
+      "week_distance": {
+        "name": "Distance this week"
+      },
+      "week_duration": {
+        "name": "Workout time this week"
+      },
+      "week_active_energy": {
+        "name": "Active energy this week"
+      }
+    }
+  }
+}
