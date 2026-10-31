@@ -18,9 +18,15 @@
  * (BSD-2-Lizenz, siehe leaflet/LICENSE). Kartenkacheln: OpenStreetMap, im
  * dunklen Modus umgefaerbt. Farben aus dem Nachtblau-Stil, mit festen Werten
  * als Rueckfall.
+ *
+ * Einfaerbung der Route: Stufengrenzen aus dem jeweiligen Training (Tempo:
+ * Stopp unter 1 km/h, dann Viertel der Zeit in Bewegung; Puls: Fuenftel der
+ * Zeit), damit Unterschiede innerhalb eines Trainings sichtbar werden.
+ * Kilometer-Marken nach der Distanz von Apple (GPS-Strecke darauf skaliert),
+ * damit sie zu den Splits passen.
  */
 
-const VERSION = "0.1.1";
+const VERSION = "0.1.2";
 const LEAFLET = "/ha_training/leaflet";
 
 const TEXT = {
@@ -40,6 +46,8 @@ const TEXT = {
     hrPeak: "Puls-Max", stop: "unter 1 (Stopp)", from: "ab", below: "unter",
     perKm: "min/km", appleEffort: "Apple-Schätzung", gpsRoute: "GPS-Route", min: "min", max: "max",
     noData: "keine Daten", height: "Höhe", humidity: "Luftfeuchte",
+    levelsSpeed: "Stufen aus diesem Training: je ¼ der Zeit in Bewegung",
+    levelsHr: "Stufen aus diesem Training: je ⅕ der Zeit",
   },
   en: {
     title: "Workout",
@@ -57,6 +65,8 @@ const TEXT = {
     hrPeak: "Max HR", stop: "below 1 (stop)", from: "from", below: "below",
     perKm: "min/km", appleEffort: "Apple estimate", gpsRoute: "GPS route", min: "min", max: "max",
     noData: "no data", height: "Altitude", humidity: "humidity",
+    levelsSpeed: "Levels from this workout: ¼ of the moving time each",
+    levelsHr: "Levels from this workout: ⅕ of the time each",
   },
 };
 
@@ -68,12 +78,72 @@ const COLORS = {
   text: ["--nachtblau-text", "#f2f5f8"],
   muted: ["--nachtblau-text-sekundaer", "#8794a5"],
   off: ["--nachtblau-aus", "#3a4453"],
+  violett: ["--nachtblau-violett", "#b399d4"],
+  blau: ["--nachtblau-blau", "#7fb3d5"],
+  mint: ["--nachtblau-mint", "#89d2b0"],
+  limette: ["--nachtblau-limette", "#bdd27f"],
+  sonnengelb: ["--nachtblau-sonnengelb", "#e6c15a"],
+  amber: ["--nachtblau-amber", "#e6b566"],
+  koralle: ["--nachtblau-koralle", "#e7936e"],
 };
 
+// Stufen der Route. Farbreihen aus der Palette mit deutlich verschiedenen
+// Toenen (benachbarte Stufen mindestens Delta E 2000 = 16); "limits" gelten
+// nur, wenn ein Training zu wenige Werte fuer eigene Grenzen hat.
 const SCALES = {
-  speed: { field: "v", limits: [1, 2.5, 3.3, 3.8], unit: "km/h", digits: 1 },
-  heart_rate: { field: "hr", limits: [100, 105, 110, 115], unit: "bpm", digits: 0 },
+  speed: {
+    field: "v", unit: "km/h", digits: 1, stop: 1, shares: [0.25, 0.5, 0.75],
+    limits: [1, 2.5, 3.3, 3.8], ramp: ["violett", "blau", "mint", "limette", "sonnengelb"],
+  },
+  heart_rate: {
+    field: "hr", unit: "bpm", digits: 0, shares: [0.2, 0.4, 0.6, 0.8],
+    limits: [100, 105, 110, 115], ramp: ["blau", "mint", "limette", "amber", "koralle"],
+  },
 };
+const MIN_VALUES = 30;
+const GAP_S = 90;
+
+// Wert beim Anteil p einer sortierten Liste (linear zwischen Nachbarn)
+function quantile(sorted, p) {
+  const i = (sorted.length - 1) * p, lo = Math.floor(i), hi = Math.ceil(i);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (i - lo);
+}
+
+// Stufengrenzen aus den Werten eines Trainings, gerundet wie in der Legende
+// und streng steigend. Zu wenige Werte: feste Grenzen.
+function workoutLimits(values, kind) {
+  const scale = SCALES[kind];
+  const step = 10 ** -scale.digits;
+  const fix = (x) => Number(x.toFixed(scale.digits));
+  const usable = values.filter((v) => v != null && !Number.isNaN(v) && (scale.stop == null || v >= scale.stop));
+  if (usable.length < MIN_VALUES) return { limits: scale.limits.slice(), relative: false };
+  usable.sort((a, b) => a - b);
+  const raw = (scale.stop != null ? [scale.stop] : []).concat(scale.shares.map((p) => quantile(usable, p)));
+  const limits = [];
+  raw.forEach((x, i) => limits.push(fix(i ? Math.max(Math.round(x / step) * step, limits[i - 1] + step) : Math.round(x / step) * step)));
+  return { limits, relative: true };
+}
+
+// Zusammenhaengende Abschnitte einer Reihe [t, v]; Luecken > gap oder
+// fehlende Werte trennen. Einzelne Werte bilden Abschnitte der Laenge 1.
+function splitRuns(rows, gap) {
+  const runs = [];
+  let run = [], last = null;
+  for (const [t, v] of rows) {
+    if (v == null || (last != null && t - last > gap)) { if (run.length) runs.push(run); run = []; }
+    if (v != null) run.push([t, v]);
+    last = t;
+  }
+  if (run.length) runs.push(run);
+  return runs;
+}
+
+// Faktor von der GPS-Strecke auf die Distanz von Apple (1 ohne brauchbare Werte)
+function distanceFactor(officialKm, gpsMetres) {
+  if (!(officialKm > 0) || !(gpsMetres > 0)) return 1;
+  const factor = (officialKm * 1000) / gpsMetres;
+  return factor > 0.5 && factor < 2 ? factor : 1;
+}
 
 let leafletPromise = null;
 function loadLeaflet() {
@@ -221,6 +291,7 @@ class HaTrainingCard extends HTMLElement {
   _prepare(detail) {
     this._detail = detail;
     this._points = [];
+    this._dFactor = 1;
     if (!detail) return;
     const hr = detail.heart_rate || [];
     const route = detail.route || [];
@@ -241,6 +312,7 @@ class HaTrainingCard extends HTMLElement {
       window.sort((a, b) => a - b);
       this._points[i].v = window.length ? window[Math.floor(window.length / 2)] * 3.6 : null;
     }
+    this._dFactor = distanceFactor(this._summary?.distance_km, dist);
   }
 
   _metres(a, b) {
@@ -277,10 +349,11 @@ class HaTrainingCard extends HTMLElement {
         .schalter { display: inline-flex; background: var(--nachtblau-flaeche-vertieft, #10151d); border: 1px solid var(--nachtblau-unterkachel-rand, rgba(255, 255, 255, 0.06)); border-radius: 12px; padding: 3px; gap: 3px; }
         .schalter button { all: unset; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--nachtblau-text-sekundaer, #8794a5); padding: 5px 11px; border-radius: 9px; }
         .schalter button[aria-pressed="true"] { background: var(--nachtblau-flaeche-erhoeht, #222b3c); color: var(--nachtblau-text, #f2f5f8); }
-        .karte { height: 300px; border-radius: 14px; overflow: hidden; border: 1px solid var(--nachtblau-unterkachel-rand, rgba(255, 255, 255, 0.06)); background: var(--nachtblau-flaeche-vertieft, #10151d); }
+        .karte { position: relative; z-index: 0; isolation: isolate; height: 300px; border-radius: 14px; overflow: hidden; border: 1px solid var(--nachtblau-unterkachel-rand, rgba(255, 255, 255, 0.06)); background: var(--nachtblau-flaeche-vertieft, #10151d); }
         .legende { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 11.5px; color: var(--nachtblau-text-sekundaer, #8794a5); margin-top: 8px; font-variant-numeric: tabular-nums; }
         .legende span { display: inline-flex; align-items: center; gap: 6px; }
         .legende i { width: 16px; height: 6px; border-radius: 3px; display: inline-block; }
+        .legende .notiz { flex-basis: 100%; }
         .anzeige { font-size: 12.5px; color: var(--nachtblau-label, #b4c0cf); font-variant-numeric: tabular-nums; min-height: 18px; margin: 4px 0 6px; }
         .anzeige b { color: var(--nachtblau-text, #f2f5f8); }
         .diagramm .t { font-size: 11px; font-weight: 600; color: var(--nachtblau-text-sekundaer, #8794a5); margin: 8px 0 4px 2px; }
@@ -293,6 +366,7 @@ class HaTrainingCard extends HTMLElement {
         th:first-child, td:first-child { text-align: left; }
         td small { color: var(--nachtblau-text-sekundaer, #8794a5); }
         .marke { background: var(--nachtblau-flaeche-erhoeht, #222b3c); color: var(--nachtblau-text, #f2f5f8); border: 1px solid var(--nachtblau-unterkachel-rand, rgba(255, 255, 255, 0.06)); border-radius: 8px; font: 600 11px/1.3 -apple-system, system-ui, sans-serif; padding: 4px 6px; width: max-content; max-width: 150px; text-align: center; box-shadow: 0 4px 10px -4px rgba(0, 0, 0, 0.7); transform: translate(-50%, -140%); display: inline-block; }
+        .marke .teil { white-space: nowrap; }
         .leaflet-container { background: var(--nachtblau-flaeche-vertieft, #10151d); font-family: inherit; }
         .dunkel .kachel-dunkel { filter: invert(1) hue-rotate(180deg) brightness(0.82) contrast(0.9) saturate(0.5); }
         .leaflet-control-attribution { background: rgba(16, 21, 29, 0.8) !important; color: var(--nachtblau-text-sekundaer, #8794a5) !important; font-size: 10px; }
@@ -400,9 +474,8 @@ class HaTrainingCard extends HTMLElement {
 
   _scale() {
     const scale = SCALES[this._colorBy];
-    const base = this._color(this._colorBy === "speed" ? "speed" : "hr");
-    const surface = this._color("surface");
-    return { ...scale, colors: [0.38, 0.55, 0.72, 0.86, 1].map((share) => mix(base, surface, share)) };
+    const { limits, relative } = workoutLimits(this._points.map((p) => p[scale.field]), this._colorBy);
+    return { ...scale, limits, relative, colors: scale.ramp.map((role) => this._color(role)) };
   }
 
   _level(scale, value) {
@@ -487,7 +560,8 @@ class HaTrainingCard extends HTMLElement {
       `${fmt(l[0])}–${fmt(l[1])}`, `${fmt(l[1])}–${fmt(l[2])}`, `${fmt(l[2])}–${fmt(l[3])}`, `${this._t("from")} ${fmt(l[3])}`,
     ];
     const legend = this.shadowRoot.getElementById("legende");
-    if (legend) legend.innerHTML = `<span style="color:var(--nachtblau-label, #b4c0cf);font-weight:600">${this._t(this._colorBy === "speed" ? "byspeed" : "byhr")} · ${scale.unit}</span>` + texts.map((t, i) => `<span><i style="background:${scale.colors[i]}"></i>${t}</span>`).join("");
+    const note = scale.relative ? `<span class="notiz">${this._t(this._colorBy === "speed" ? "levelsSpeed" : "levelsHr")}</span>` : "";
+    if (legend) legend.innerHTML = `<span style="color:var(--nachtblau-label, #b4c0cf);font-weight:600">${this._t(this._colorBy === "speed" ? "byspeed" : "byhr")} · ${scale.unit}</span>` + texts.map((t, i) => `<span><i style="background:${scale.colors[i]}"></i>${t}</span>`).join("") + note;
   }
 
   // Start, Ziel, Kilometer, Pausen, hoechster Minutenpuls; nahe Marken zusammengefasst
@@ -500,7 +574,8 @@ class HaTrainingCard extends HTMLElement {
       const p = this._points;
       marks.push([0, `${this._t("start")} ${this._clock(p[0].t)}`]);
       marks.push([p.length - 1, `${this._t("finish")} ${this._clock(p[p.length - 1].t)}`]);
-      for (let km = 1; km * 1000 < p[p.length - 1].d; km++) marks.push([p.findIndex((x) => x.d >= km * 1000), `${km} km`]);
+      const f = this._dFactor || 1;
+      for (let km = 1; km * 1000 < p[p.length - 1].d * f; km++) marks.push([p.findIndex((x) => x.d * f >= km * 1000), `${km} km`]);
       for (const [a, b] of this._detail?.pauses || []) {
         let i = p.findIndex((x) => x.t >= a);
         if (i < 0) i = p.length - 1;
@@ -521,7 +596,7 @@ class HaTrainingCard extends HTMLElement {
       const g = groups.find((x) => Math.hypot(x.x - q.x, x.y - q.y) < 40);
       if (g) g.texts.push(text); else groups.push({ x: q.x, y: q.y, i, texts: [text] });
     }
-    this._labelLayer = L.layerGroup(groups.map((g) => L.marker(this._ll[g.i], { interactive: false, icon: L.divIcon({ className: "", html: `<span class="marke">${g.texts.join(" · ")}</span>`, iconSize: [0, 0] }) }))).addTo(map);
+    this._labelLayer = L.layerGroup(groups.map((g) => L.marker(this._ll[g.i], { interactive: false, icon: L.divIcon({ className: "", html: `<span class="marke">${g.texts.map((t) => `<span class="teil">${t}</span>`).join(" · ")}</span>`, iconSize: [0, 0] }) }))).addTo(map);
   }
 
   _initCharts(root) {
@@ -561,14 +636,12 @@ class HaTrainingCard extends HTMLElement {
       chart.draw();
       this._charts.push(chart);
     };
-    const path = (rows, x, y) => {
-      let d = "", on = false, last = null;
-      for (const [t, v] of rows) {
-        if (v == null || (last != null && t - last > 90)) on = false;
-        if (v != null) { d += (on ? "L" : "M") + x(t).toFixed(1) + "," + y(v).toFixed(1); on = true; }
-        last = t;
-      }
-      return d;
+    // Linie fuer zusammenhaengende Abschnitte, Punkt fuer einzelne Werte
+    const line = (rows, x, y, color) => {
+      const runs = splitRuns(rows, GAP_S);
+      const d = runs.filter((r) => r.length > 1).map((r) => r.map(([t, v], i) => (i ? "L" : "M") + x(t).toFixed(1) + "," + y(v).toFixed(1)).join("")).join("");
+      const dots = runs.filter((r) => r.length === 1).map(([[t, v]]) => `<circle cx="${x(t).toFixed(1)}" cy="${y(v).toFixed(1)}" r="2.5" fill="${color}"/>`).join("");
+      return `<path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>${dots}`;
     };
     const hr = this._detail?.heart_rate || [];
     if (hr.length) {
@@ -581,9 +654,9 @@ class HaTrainingCard extends HTMLElement {
         marks: (x, y) => {
           let band = "", seg = [];
           const flush = () => { if (seg.length > 1) band += `<path d="M${seg.map((q) => `${x(q[0] + mid).toFixed(1)},${y(q[3]).toFixed(1)}`).join("L")}L${seg.slice().reverse().map((q) => `${x(q[0] + mid).toFixed(1)},${y(q[1]).toFixed(1)}`).join("L")}Z" fill="${mix(color, this._color("surface"), 0.25)}" opacity="0.8"/>`; seg = []; };
-          hr.forEach((q, i) => { if (i && q[0] - hr[i - 1][0] > 90) flush(); seg.push(q); });
+          hr.forEach((q, i) => { if (i && q[0] - hr[i - 1][0] > GAP_S) flush(); seg.push(q); });
           flush();
-          return band + `<path d="${path(hr.map((q) => [q[0] + mid, q[2]]), x, y)}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>`;
+          return band + line(hr.map((q) => [q[0] + mid, q[2]]), x, y, color);
         },
       });
     }
@@ -593,7 +666,7 @@ class HaTrainingCard extends HTMLElement {
       const step = Math.max(1, Math.floor(pts.length / 1200));
       make(root.querySelector("#dSpeed"), {
         dom: [0, top], ticks, value: (t) => this._points[this._nearest(t)]?.v,
-        marks: (x, y) => `<path d="${path(pts.filter((p, i) => i % step === 0).map((p) => [p.t, p.v]), x, y)}" fill="none" stroke="${this._color("speed")}" stroke-width="2" stroke-linejoin="round"/>`,
+        marks: (x, y) => line(pts.filter((p, i) => i % step === 0).map((p) => [p.t, p.v]), x, y, this._color("speed")),
       });
     }
   }
@@ -634,7 +707,7 @@ class HaTrainingCard extends HTMLElement {
     if (!out) return;
     const hr = this._hrAt(at ? at.t : t);
     out.innerHTML = `<b>${this._clock(at ? at.t : t, true)}</b>` +
-      (at ? ` · ${this._num(at.d / 1000, 2)} km · ${this._t("byspeed")} <b>${this._num(at.v, 1)} km/h</b>` : "") +
+      (at ? ` · ${this._num((at.d * (this._dFactor || 1)) / 1000, 2)} km · ${this._t("byspeed")} <b>${this._num(at.v, 1)} km/h</b>` : "") +
       ` · ${this._t("byhr")} <b>${this._num(hr)}</b> bpm` +
       (at && at.alt != null ? ` · ${this._t("height")} ${this._num(at.alt)} m` : "");
   }

@@ -14,7 +14,7 @@ dieser Integration. Home Assistant speichert die Trainings privat, zeigt das
 letzte Training und die Woche als Sensoren und meldet neue Trainings als
 Ereignis. Die mitgelieferte Karte zeichnet die Route auf einer Karte, nach
 Tempo oder Puls eingefärbt, mit gekoppeltem Verlauf und Kilometer-Tabelle.
-Version 0.1.1.
+Version 0.1.2.
 
 ## Inhalt
 
@@ -151,9 +151,16 @@ color_by: speed      # oder heart_rate
 - Kennzahlen: Distanz (dazu die Länge der GPS-Route), Zeit aktiv mit Pause,
   Tempo und min/km, Puls, aktive Energie, Anstrengung, Höhenmeter,
   Schrittfrequenz, Temperatur und Luftfeuchte.
-- Route auf OpenStreetMap, nach Tempo oder Puls in fünf Stufen einer Farbe
-  eingefärbt; markiert sind Start, Ziel, Kilometer, Pausen und die Minute mit
-  dem höchsten Puls. Nahe Marken werden zusammengefasst.
+- Route auf OpenStreetMap, nach Tempo oder Puls in fünf Stufen eingefärbt.
+  Die Grenzen kommen aus dem jeweiligen Training: Tempo unter 1 km/h ist
+  „Stopp“, der Rest in Vierteln der Zeit in Bewegung; Puls in Fünfteln der
+  Zeit. So zeigt die Farbe, wo man in diesem Training schneller oder
+  langsamer war; die Legende nennt die Werte. Farbreihen aus der Palette:
+  Tempo Violett, Blau, Mint, Limette, Sonnengelb; Puls Blau, Mint, Limette,
+  Amber, Koralle (benachbarte Stufen mindestens ΔE 2000 = 16 auseinander).
+  Hat ein Training weniger als 30 Werte, gelten feste Grenzen.
+- Markiert sind Start, Ziel, Kilometer, Pausen und die Minute mit dem
+  höchsten Puls. Nahe Marken werden zusammengefasst.
 - Puls (Ø mit Band min–max) und Tempo als zwei Diagramme mit gemeinsamer
   Zeitachse; Tippen in ein Diagramm oder auf die Route zeigt dieselbe Stelle
   überall.
@@ -171,8 +178,8 @@ HACS zeigt neue Versionen als Update an. Nach dem Herunterladen Home Assistant
 neu starten, danach einmal die Seite neu laden, in der Companion App den
 Frontend-Cache zurücksetzen.
 
-**Update auf 0.1.1:** keine Migration. Die Karte hat jetzt Rand und Schatten
-wie die übrigen Nachtblau-Hüllen.
+**Update auf 0.1.2:** keine Migration. Nur die Karte ändert sich (siehe
+Release-Hinweise).
 
 ## Datenschutz und Speicher
 
@@ -197,16 +204,22 @@ wie die übrigen Nachtblau-Hüllen.
   wählen.
 - Der Puls kommt so fein wie in der App eingestellt (Minuten oder Sekunden).
   Hat die Uhr zeitweise nicht gemessen, bleibt die Linie dort offen und die
-  Route grau.
+  Route grau; einzelne Werte in einer Lücke zeigt das Diagramm als Punkt.
 - Die Distanz von Apple (Schrittzähler und GPS) und die Summe der GPS-Punkte
   weichen leicht voneinander ab (im Test 2,91 gegen 3,02 km). Die km-Marken auf
-  der Karte folgen der GPS-Summe, die Tabelle den Splits von Apple.
+  der Karte und die km-Angabe beim Tippen folgen der Distanz von Apple (die
+  GPS-Strecke wird darauf umgerechnet), damit sie zur Tabelle passen. Die
+  Kachel „Distanz“ nennt beide Werte.
 - Sendet Health Auto Export im Hintergrund, entscheidet iOS über den
   Zeitpunkt.
 
 ## Teststand
 
-- **0.1.x:** 48 automatische Tests. 0.1.1: Hülle der Karte mit Rand und
+- **0.1.x:** 59 automatische Tests. 0.1.2: Stufen aus dem Training
+  (Viertel, Fünftel, streng steigend, Rückfall bei wenigen Werten),
+  Abschnitte und Einzelwerte in Lücken, Umrechnung GPS auf Apple-Distanz,
+  Abstand der Farbstufen (ΔE 2000), Kartenfläche mit eigener Ebene unter den
+  Leisten, Marken ohne Umbruch innerhalb einer Angabe. 0.1.1: Hülle der Karte mit Rand und
   Schatten wie die Nachtblau-Hüllen (keine neuen Tests). 0.1.0: Parser (Einheiten, Pausen, Splits,
   Version 1, fehlende Felder), Webhook (neu, doppelt, geändert, kein JSON, ohne
   ID, falsche Methode, nach dem Entladen), Einrichtung und Optionen samt
@@ -217,9 +230,9 @@ wie die übrigen Nachtblau-Hüllen.
   (auch erster PR ohne manifest.json auf main).
   Die Karte ist in Chromium bei 344 und 386 Pixeln mit synthetischen Daten und
   mit einem echten Export gezeichnet, ohne Fehler und ohne waagrechten
-  Überlauf; Kennzahlen und Splits stimmen mit der App überein. Nicht live in
-  Home Assistant geprüft: Annahme über den Webhook aus Health Auto Export,
-  Karte im Dashboard.
+  Überlauf; Kennzahlen und Splits stimmen mit der App überein. Live geprüft
+  (31.10.2026): Annahme über den Webhook aus Health Auto Export und die Karte
+  im Dashboard (0.1.1, iPhone).
 
 ## Tests
 

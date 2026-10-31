@@ -1,0 +1,169 @@
+"""Hilfsfunktionen der Karte (in Node ausgefuehrt) und feste Regeln im CSS."""
+
+from __future__ import annotations
+
+import itertools
+import json
+import math
+import re
+import shutil
+import subprocess
+from pathlib import Path
+
+import pytest
+
+CARD = (
+    Path(__file__).parents[1]
+    / "custom_components"
+    / "ha_training"
+    / "frontend"
+    / "ha-training-card.js"
+)
+CARD_TEXT = CARD.read_text(encoding="utf-8")
+
+HARNESS = """
+const vm = require("vm");
+const fs = require("fs");
+const ctx = {
+  HTMLElement: class {},
+  customElements: { get: () => true, define() {} },
+  window: {},
+  console,
+};
+vm.createContext(ctx);
+vm.runInContext(fs.readFileSync(process.argv[1], "utf8"), ctx);
+const out = vm.runInContext(process.argv[2], ctx);
+process.stdout.write(JSON.stringify(out));
+"""
+
+
+def js(expression: str):
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node fehlt")
+    result = subprocess.run(
+        [node, "-e", HARNESS, str(CARD), expression],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)
+
+
+def test_speed_levels_from_workout():
+    # 50 Sekunden Stopp, dann gleichmaessig 2,0 bis 4,0 km/h
+    values = [0.5] * 50 + [round(2 + i * 0.01, 2) for i in range(201)]
+    got = js(f"workoutLimits({json.dumps(values)}, 'speed')")
+    assert got == {"limits": [1, 2.5, 3, 3.5], "relative": True}
+
+
+def test_heart_rate_levels_from_workout():
+    got = js(f"workoutLimits({json.dumps(list(range(100, 150)))}, 'heart_rate')")
+    # Fuenftel: Index 9,8 / 19,6 / 29,4 / 39,2 der sortierten Werte
+    assert got == {"limits": [110, 120, 129, 139], "relative": True}
+
+
+def test_levels_stay_strictly_increasing():
+    got = js("workoutLimits(Array(100).fill(3), 'speed')")
+    assert got["limits"] == [1, 3, 3.1, 3.2]
+    got = js("workoutLimits(Array(100).fill(104), 'heart_rate')")
+    assert got["limits"] == [104, 105, 106, 107]
+
+
+def test_few_values_fall_back_to_fixed_levels():
+    got = js("workoutLimits([2, 3, null, 4], 'speed')")
+    assert got == {"limits": [1, 2.5, 3.3, 3.8], "relative": False}
+
+
+def test_runs_split_at_gaps_and_missing_values():
+    rows = [[0, 1], [60, 2], [200, 3], [300, None], [310, 4], [320, 5]]
+    got = js(f"splitRuns({json.dumps(rows)}, 90)")
+    assert got == [[[0, 1], [60, 2]], [[200, 3]], [[310, 4], [320, 5]]]
+
+
+def test_distance_factor():
+    # Apple 2,913 km, GPS-Strecke 3.020 m: Kilometer-Marken rutschen nach hinten
+    assert js("distanceFactor(2.912755, 3020)") == pytest.approx(0.96449, abs=1e-5)
+    assert js("distanceFactor(null, 3000)") == 1
+    assert js("distanceFactor(2.9, 0)") == 1
+    assert js("distanceFactor(10, 3000)") == 1
+
+
+def _lab(hex_color: str) -> tuple[float, float, float]:
+    rgb = [int(hex_color[i : i + 2], 16) / 255 for i in (1, 3, 5)]
+    lin = [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in rgb]
+    r, g, b = lin
+    x = (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047
+    y = 0.2126 * r + 0.7152 * g + 0.0722 * b
+    z = (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883
+
+    def f(t: float) -> float:
+        return t ** (1 / 3) if t > 0.008856 else 7.787 * t + 16 / 116
+
+    return 116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))
+
+
+def _delta_e_2000(c1: str, c2: str) -> float:
+    l1, a1, b1 = _lab(c1)
+    l2, a2, b2 = _lab(c2)
+    cm = (math.hypot(a1, b1) + math.hypot(a2, b2)) / 2
+    g = 0.5 * (1 - math.sqrt(cm**7 / (cm**7 + 25**7)))
+    a1p, a2p = a1 * (1 + g), a2 * (1 + g)
+    c1p, c2p = math.hypot(a1p, b1), math.hypot(a2p, b2)
+    h1 = math.degrees(math.atan2(b1, a1p)) % 360
+    h2 = math.degrees(math.atan2(b2, a2p)) % 360
+    dh = h2 - h1
+    if abs(dh) > 180:
+        dh -= 360 * math.copysign(1, dh)
+    d_l, d_c = l2 - l1, c2p - c1p
+    d_h = 2 * math.sqrt(c1p * c2p) * math.sin(math.radians(dh / 2))
+    lm, cmp_ = (l1 + l2) / 2, (c1p + c2p) / 2
+    hm = (h1 + h2) / 2 if abs(h1 - h2) <= 180 else (h1 + h2 + 360) / 2
+    t = (
+        1
+        - 0.17 * math.cos(math.radians(hm - 30))
+        + 0.24 * math.cos(math.radians(2 * hm))
+        + 0.32 * math.cos(math.radians(3 * hm + 6))
+        - 0.2 * math.cos(math.radians(4 * hm - 63))
+    )
+    s_l = 1 + 0.015 * (lm - 50) ** 2 / math.sqrt(20 + (lm - 50) ** 2)
+    s_c = 1 + 0.045 * cmp_
+    s_h = 1 + 0.015 * cmp_ * t
+    r_t = (
+        -2
+        * math.sin(math.radians(60 * math.exp(-(((hm - 275) / 25) ** 2))))
+        * math.sqrt(cmp_**7 / (cmp_**7 + 25**7))
+    )
+    return math.sqrt(
+        (d_l / s_l) ** 2
+        + (d_c / s_c) ** 2
+        + (d_h / s_h) ** 2
+        + r_t * (d_c / s_c) * (d_h / s_h)
+    )
+
+
+def test_delta_e_reference_pair():
+    # Weiss gegen Schwarz: L* 100 gegen 0, ohne Buntheit
+    assert _delta_e_2000("#ffffff", "#000000") == pytest.approx(100, abs=0.5)
+
+
+@pytest.mark.parametrize("kind", ["speed", "heart_rate"])
+def test_neighbouring_levels_are_distinct(kind: str):
+    colors = js(f"SCALES.{kind}.ramp.map((role) => COLORS[role][1])")
+    assert len(colors) == 5
+    for a, b in itertools.pairwise(colors):
+        assert _delta_e_2000(a, b) >= 16, (a, b)
+
+
+def test_map_stays_below_the_app_bars():
+    # Leaflet legt Ebenen auf z-index 400 bis 1000; ohne eigene Ebene der
+    # Kartenflaeche liegen sie ueber Kopf- und Fussleiste von Home Assistant
+    rule = re.search(r"\.karte \{([^}]*)\}", CARD_TEXT).group(1)
+    assert "position: relative" in rule
+    assert "z-index: 0" in rule
+    assert "isolation: isolate" in rule
+
+
+def test_marker_parts_do_not_wrap_inside():
+    assert ".marke .teil { white-space: nowrap; }" in CARD_TEXT
