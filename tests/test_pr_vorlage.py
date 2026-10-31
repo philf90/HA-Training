@@ -63,3 +63,20 @@ def test_version_rule():
     assert pruefe_pr.pruefe_version(changed, "0.1.0", "0.1.1", set())
     assert pruefe_pr.pruefe_version(changed, "0.1.0", "0.1.1", {"v0.1.1.md"}) == []
     assert pruefe_pr.pruefe_version(["README.md"], "0.1.0", "0.1.0", set()) == []
+
+
+def test_first_version_without_manifest_on_base():
+    """Erster PR: Basis ohne manifest.json, Version aus dem PR mit Hinweisen."""
+    import subprocess
+
+    empty = subprocess.run(
+        ["git", "hash-object", "-t", "tree", "/dev/null"],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=ROOT,
+    ).stdout.strip()
+    assert pruefe_pr._version(empty) is None
+    changed = ["custom_components/ha_training/manifest.json"]
+    assert pruefe_pr.pruefe_version(changed, None, "0.1.0", {"v0.1.0.md"}) == []
+    assert pruefe_pr.pruefe_version(changed, None, "0.1.0", set())

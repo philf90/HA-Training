@@ -196,13 +196,14 @@ Frontend-Cache zurücksetzen.
 
 ## Teststand
 
-- **0.1.x:** 47 automatische Tests. 0.1.0: Parser (Einheiten, Pausen, Splits,
+- **0.1.x:** 48 automatische Tests. 0.1.0: Parser (Einheiten, Pausen, Splits,
   Version 1, fehlende Felder), Webhook (neu, doppelt, geändert, kein JSON, ohne
   ID, falsche Methode, nach dem Entladen), Einrichtung und Optionen samt
   Aufbewahrung, WebSocket-API, Ereignis nur für neue Trainings, Wochensummen
   mit Wechsel am Montag, Diagnose ohne Geheimnis und Route, Entfernen,
   Neustart, Datenschutz (keine Koordinaten, Exporte oder Webhook-ID im Repo
-  bzw. Log), Konsistenz von Version, Übersetzungen und Karte, PR-Vorlage.
+  bzw. Log), Konsistenz von Version, Übersetzungen und Karte, PR-Vorlage
+  (auch erster PR ohne manifest.json auf main).
   Die Karte ist in Chromium bei 344 und 386 Pixeln mit synthetischen Daten und
   mit einem echten Export gezeichnet, ohne Fehler und ohne waagrechten
   Überlauf; Kennzahlen und Splits stimmen mit der App überein. Nicht live in

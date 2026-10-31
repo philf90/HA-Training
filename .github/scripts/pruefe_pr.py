@@ -115,15 +115,20 @@ def pruefe_version(
 
 
 def _version(ref: str | None) -> str | None:
+    """Version aus manifest.json; None, wenn es die Datei dort noch nicht gibt."""
     if ref is None:
         text = (ROOT / MANIFEST).read_text(encoding="utf-8")
     else:
-        text = subprocess.run(
+        result = subprocess.run(
             ["git", "show", f"{ref}:{MANIFEST}"],
             capture_output=True,
             text=True,
-            check=True,
-        ).stdout
+            check=False,
+        )
+        # Erste Version: auf dem Basis-Stand gibt es noch kein manifest.json
+        if result.returncode != 0:
+            return None
+        text = result.stdout
     return json.loads(text)["version"]
 
 
