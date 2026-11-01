@@ -21,6 +21,7 @@ async def test_new_workout_creates_sensors(hass: HomeAssistant, entry, hass_clie
         "neu": 1,
         "geaendert": 0,
         "verworfen": 0,
+        "geloescht": 0,
     }
     await hass.async_block_till_done()
     assert hass.states.get("sensor.training_latest_workout_distance").state == "2.5"
@@ -100,6 +101,7 @@ async def test_bad_field_types_do_not_drop_batch(
         "neu": 2,
         "geaendert": 0,
         "verworfen": 0,
+        "geloescht": 0,
     }
     assert len(entry.runtime_data.store.workouts) == 2
 

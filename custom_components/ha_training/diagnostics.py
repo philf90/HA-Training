@@ -44,6 +44,7 @@ async def async_get_config_entry_diagnostics(
         },
         "workouts": len(store.workouts),
         "with_detail": sum(1 for w in store.workouts if w.get("has_detail")),
+        "deleted": len(store.deleted),
         "keep_details": store.keep_details,
         "latest": latest,
     }

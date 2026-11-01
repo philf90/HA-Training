@@ -1,0 +1,14 @@
+delete_workout:
+  fields:
+    workout_id:
+      required: true
+      example: "D6B529A9-0A4E-4E5A-818C-95C356458639"
+      selector:
+        text:
+undelete_workout:
+  fields:
+    workout_id:
+      required: true
+      example: "D6B529A9-0A4E-4E5A-818C-95C356458639"
+      selector:
+        text:

@@ -6,7 +6,9 @@
  * Route und Verlaeufen). Zeigt Kennzahlen, die Route auf einer Karte (nach
  * Tempo oder Puls eingefaerbt), Puls- und Tempoverlauf mit gemeinsamer Zeitachse
  * und die Kilometer-Splits von Apple. Tippen in ein Diagramm oder auf die Route
- * markiert dieselbe Stelle ueberall.
+ * markiert dieselbe Stelle ueberall. "GPX" laedt die Route als GPX-Datei
+ * (ha_training/gpx), "Loeschen" (nur Administratoren, zweiter Klick bestaetigt)
+ * loescht das Training (ha_training/delete_workout).
  *
  * Optionen:
  *   type: custom:ha-training-card
@@ -29,7 +31,7 @@
  * damit sie zu den Splits passen.
  */
 
-const VERSION = "0.1.5";
+const VERSION = "0.1.6";
 const LEAFLET = "/ha_training/leaflet";
 
 const TEXT = {
@@ -51,6 +53,8 @@ const TEXT = {
     noData: "keine Daten", height: "Höhe", humidity: "Luftfeuchte",
     levelsSpeed: "Stufen aus diesem Training: je ¼ der Zeit in Bewegung; Tempo für die Farbe über 1 min geglättet",
     levelsHr: "Stufen aus diesem Training: je ⅕ der Zeit",
+    gpx: "GPX", del: "Löschen", delConfirm: "Wirklich löschen?",
+    gpxFailed: "GPX-Export fehlgeschlagen.", delFailed: "Löschen fehlgeschlagen.",
   },
   en: {
     title: "Workout",
@@ -70,6 +74,8 @@ const TEXT = {
     noData: "no data", height: "Altitude", humidity: "humidity",
     levelsSpeed: "Levels from this workout: ¼ of the moving time each; speed for the colour smoothed over 1 min",
     levelsHr: "Levels from this workout: ⅕ of the time each",
+    gpx: "GPX", del: "Delete", delConfirm: "Really delete?",
+    gpxFailed: "GPX export failed.", delFailed: "Delete failed.",
   },
 };
 
@@ -348,12 +354,18 @@ class HaTrainingCard extends HTMLElement {
       <style>
         :host { display: block; }
         ha-card { padding: 16px 18px; background: linear-gradient(180deg, var(--nachtblau-huelle-oben, var(--ha-card-background, #1b2231)) 0%, var(--nachtblau-huelle-unten, var(--ha-card-background, #171d29)) 55%); border-radius: 22px; border: 1px solid var(--nachtblau-huelle-rand, rgba(255, 255, 255, 0.05)); box-shadow: 0 18px 44px -22px var(--nachtblau-schatten, rgba(0, 0, 0, 0.7)); color: var(--nachtblau-text, var(--primary-text-color, #f2f5f8)); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
-        .kopf { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+        .kopf { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-bottom: 12px; }
+        .titel { flex: 1 1 180px; min-width: 0; }
         .kachel { width: 44px; height: 44px; border-radius: 13px; display: grid; place-items: center; flex: none; background: color-mix(in srgb, var(--nachtblau-rose, #e6a0c4) 16%, transparent); border: 1px solid color-mix(in srgb, var(--nachtblau-rose, #e6a0c4) 24%, transparent); }
         .kachel ha-icon { --mdc-icon-size: 23px; --ha-icon-display: block; color: var(--nachtblau-rose, #e6a0c4); }
         h2 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -0.02em; }
         .unter, .hinweis { font-size: 12.5px; color: var(--nachtblau-text-sekundaer, var(--secondary-text-color, #8794a5)); }
         .hinweis { margin: 8px 0; line-height: 1.45; }
+        .aktionen { display: flex; gap: 6px; flex: none; margin-left: auto; align-self: flex-start; }
+        .aktionen button { all: unset; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--nachtblau-text-sekundaer, #8794a5); padding: 5px 10px; border-radius: 9px; border: 1px solid var(--nachtblau-unterkachel-rand, rgba(255, 255, 255, 0.06)); background: var(--nachtblau-flaeche-vertieft, #10151d); }
+        .aktionen button:focus-visible { outline: 2px solid var(--nachtblau-blau, #7fb3d5); outline-offset: 1px; }
+        .aktionen button[data-confirm="true"] { color: var(--nachtblau-koralle, #e7936e); border-color: currentColor; }
+        .meldung { font-size: 12.5px; color: var(--nachtblau-koralle, #e7936e); margin: -4px 0 10px; }
         select { all: unset; box-sizing: border-box; max-width: 100%; cursor: pointer; font-size: 12.5px; color: var(--nachtblau-text-sekundaer, #8794a5); text-decoration: underline dotted; }
         .werte { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
         @container (min-width: 560px) { .werte { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
@@ -429,11 +441,16 @@ class HaTrainingCard extends HTMLElement {
     root.innerHTML = `
       <div class="kopf">
         <span class="kachel"><ha-icon icon="mdi:walk"></ha-icon></span>
-        <div style="min-width:0">
+        <div class="titel">
           <h2>${this._escape(s.name || this._t("title"))}</h2>
           <div class="unter">${date} · ${this._clock(start)}${end ? `–${this._clock(end)}` : ""}${options && this._workouts.length > 1 ? ` · <select aria-label="${this._t("title")}">${options}</select>` : ""}</div>
         </div>
+        ${hasRoute || this._isAdmin() ? `<div class="aktionen">
+          ${hasRoute ? `<button type="button" data-a="gpx">${this._t("gpx")}</button>` : ""}
+          ${this._isAdmin() ? `<button type="button" data-a="del" data-confirm="${Boolean(this._confirmDelete)}">${this._t(this._confirmDelete ? "delConfirm" : "del")}</button>` : ""}
+        </div>` : ""}
       </div>
+      ${this._message ? `<div class="meldung" role="status">${this._t(this._message)}</div>` : ""}
       <div class="werte">${tiles.map(([l, w, u, z]) => `<div class="wert"><div class="l">${l}</div><div class="w">${w}<small>${u}</small></div><div class="z">${z}</div></div>`).join("")}</div>
       ${!this._detail ? `<div class="hinweis">${this._t("pruned")}</div>` : ""}
       ${hasRoute ? `
@@ -460,7 +477,9 @@ class HaTrainingCard extends HTMLElement {
         <table><thead><tr><th>${this._t("section")}</th><th>${this._t("time")}</th><th>${this._t("pace")}</th><th>${this._t("hrAvgShort")}</th><th>${this._t("hrMaxShort")}</th></tr></thead>
         <tbody>${this._splitRows()}</tbody></table>
       </div>` : ""}`;
-    root.querySelector("select")?.addEventListener("change", (e) => { this._selected = e.target.value; this._loadWorkout(e.target.value); });
+    root.querySelector("select")?.addEventListener("change", (e) => { this._selected = e.target.value; this._resetActions(); this._loadWorkout(e.target.value); });
+    root.querySelector('[data-a="gpx"]')?.addEventListener("click", () => this._exportGpx());
+    root.querySelector('[data-a="del"]')?.addEventListener("click", () => this._deleteClick());
     root.querySelectorAll(".schalter button").forEach((b) => b.addEventListener("click", () => {
       this._colorBy = b.dataset.m;
       root.querySelectorAll(".schalter button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
@@ -469,6 +488,80 @@ class HaTrainingCard extends HTMLElement {
     this._charts = [];
     if (hasRoute) this._initMap(root.querySelector("#karte"));
     this._initCharts(root);
+  }
+
+  _isAdmin() {
+    return Boolean(this._hass?.user?.is_admin);
+  }
+
+  _request(type) {
+    const request = { type, workout_id: this._current };
+    if (this._config.entry_id) request.entry_id = this._config.entry_id;
+    return request;
+  }
+
+  _resetActions() {
+    clearTimeout(this._confirmTimer);
+    this._confirmDelete = false;
+    this._message = null;
+  }
+
+  // Bestaetigung und Meldung ohne die Karte neu zu zeichnen (Leaflet bliebe sonst
+  // nicht stehen)
+  _updateActions() {
+    const root = this.shadowRoot?.getElementById("inhalt");
+    const button = root?.querySelector?.('[data-a="del"]');
+    if (button) {
+      button.textContent = this._t(this._confirmDelete ? "delConfirm" : "del");
+      button.dataset.confirm = String(Boolean(this._confirmDelete));
+    }
+  }
+
+  async _exportGpx() {
+    try {
+      const result = await this._hass.callWS(this._request("ha_training/gpx"));
+      this._download(result.filename, result.gpx);
+      return "exported";
+    } catch (err) {
+      this._message = "gpxFailed";
+      this._render();
+      return "failed";
+    }
+  }
+
+  _download(name, text) {
+    const url = URL.createObjectURL(new Blob([text], { type: "application/gpx+xml" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = name;
+    this.shadowRoot.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  // Erster Klick fragt nach (5 s), zweiter loescht
+  async _deleteClick() {
+    if (!this._isAdmin() || !this._current) return "denied";
+    if (!this._confirmDelete) {
+      this._confirmDelete = true;
+      this._updateActions();
+      clearTimeout(this._confirmTimer);
+      this._confirmTimer = setTimeout(() => { this._confirmDelete = false; this._updateActions(); }, 5000);
+      return "confirm";
+    }
+    this._resetActions();
+    try {
+      await this._hass.callWS(this._request("ha_training/delete_workout"));
+    } catch (err) {
+      this._message = "delFailed";
+      this._render();
+      return "failed";
+    }
+    this._selected = null;
+    this._summary = null;
+    await this._loadList();
+    return "deleted";
   }
 
   _removeMap() {

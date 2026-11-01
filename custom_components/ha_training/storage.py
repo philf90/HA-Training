@@ -5,10 +5,19 @@ Details (Route, Verlaeufe) liegen je Training in einer eigenen Datei, damit der
 Index klein bleibt und eine Abfrage der Karte nur ein Training laedt. Details
 aelterer Trainings werden nach der Option "keep_details" geloescht; ihre
 Zusammenfassung bleibt.
+
+Geloeschte Trainings verschwinden ganz (Zusammenfassung und Details); ihre ID
+kommt auf eine Sperrliste im Index, denn Health Auto Export schickt je nach
+Zeitraum dieselben Trainings erneut. Erst "wieder annehmen" nimmt sie von der
+Liste.
+
+Alle schreibenden Methoden laufen unter einem Lock: Webhook, Optionen und
+Loeschen veraendern dieselbe Liste und warten dazwischen auf Dateizugriffe.
 """
 
 from __future__ import annotations
 
+import asyncio
 import re
 from typing import Any
 
@@ -35,6 +44,8 @@ class TrainingStore:
             hass, STORAGE_VERSION, f"{STORAGE_INDEX}.{entry_id}", private=True
         )
         self.workouts: list[dict[str, Any]] = []
+        self.deleted: set[str] = set()
+        self._lock = asyncio.Lock()
 
     def _detail_store(self, workout_id: str) -> Store[dict[str, Any]]:
         return Store(
@@ -48,6 +59,17 @@ class TrainingStore:
         data = await self._index.async_load() or {}
         workouts = data.get("workouts")
         self.workouts = workouts if isinstance(workouts, list) else []
+        deleted = data.get("deleted")
+        self.deleted = (
+            {d for d in deleted if isinstance(d, str)}
+            if isinstance(deleted, list)
+            else set()
+        )
+
+    async def _async_save_index(self) -> None:
+        await self._index.async_save(
+            {"workouts": self.workouts, "deleted": sorted(self.deleted)}
+        )
 
     def get(self, workout_id: str) -> dict[str, Any] | None:
         return next((w for w in self.workouts if w.get("id") == workout_id), None)
@@ -58,16 +80,28 @@ class TrainingStore:
 
     async def async_add(
         self, parsed: list[tuple[dict[str, Any], dict[str, Any]]]
-    ) -> tuple[list[dict[str, Any]], int]:
-        """Neue und geaenderte Trainings speichern -> (neue, Anzahl geaendert).
+    ) -> tuple[list[dict[str, Any]], int, int]:
+        """Neue und geaenderte Trainings speichern.
+
+        -> (neue, Anzahl geaendert, Anzahl uebersprungen weil geloescht)
 
         Health Auto Export schickt je nach Zeitraum dieselben Trainings
         mehrmals; die id von Apple Health macht sie eindeutig. Ein erneut
         geschicktes Training ersetzt das alte nur, wenn sich etwas geaendert hat.
         """
+        async with self._lock:
+            return await self._async_add(parsed)
+
+    async def _async_add(
+        self, parsed: list[tuple[dict[str, Any], dict[str, Any]]]
+    ) -> tuple[list[dict[str, Any]], int, int]:
         new: list[dict[str, Any]] = []
         updated = 0
+        skipped = 0
         for summary, detail in parsed:
+            if summary["id"] in self.deleted:
+                skipped += 1
+                continue
             old = self.get(summary["id"])
             if old is None:
                 summary = {**summary, "has_detail": True}
@@ -92,8 +126,8 @@ class TrainingStore:
         if new or updated:
             self.workouts.sort(key=lambda w: w.get("start") or "", reverse=True)
             await self._async_prune()
-            await self._index.async_save({"workouts": self.workouts})
-        return new, updated
+            await self._async_save_index()
+        return new, updated, skipped
 
     async def _async_prune(self) -> None:
         """Details aelterer Trainings loeschen, Zusammenfassung behalten."""
@@ -103,9 +137,32 @@ class TrainingStore:
                 workout["has_detail"] = False
 
     async def async_set_keep_details(self, keep: int) -> None:
-        self.keep_details = keep
-        await self._async_prune()
-        await self._index.async_save({"workouts": self.workouts})
+        async with self._lock:
+            self.keep_details = keep
+            await self._async_prune()
+            await self._async_save_index()
+
+    async def async_delete(self, workout_id: str) -> dict[str, Any] | None:
+        """Training ganz loeschen und seine ID sperren -> geloeschte Zusammenfassung."""
+        async with self._lock:
+            workout = self.get(workout_id)
+            if workout is None:
+                return None
+            self.workouts.remove(workout)
+            self.deleted.add(workout_id)
+            # Auch ohne has_detail: eine Datei aus einem abgebrochenen Lauf
+            await self._detail_store(workout_id).async_remove()
+            await self._async_save_index()
+            return workout
+
+    async def async_undelete(self, workout_id: str) -> bool:
+        """ID von der Sperrliste nehmen; das naechste Senden legt es neu an."""
+        async with self._lock:
+            if workout_id not in self.deleted:
+                return False
+            self.deleted.discard(workout_id)
+            await self._async_save_index()
+            return True
 
     async def async_get_detail(self, workout_id: str) -> dict[str, Any] | None:
         workout = self.get(workout_id)
