@@ -21,12 +21,15 @@
  *
  * Einfaerbung der Route: Stufengrenzen aus dem jeweiligen Training (Tempo:
  * Stopp unter 1 km/h, dann Viertel der Zeit in Bewegung; Puls: Fuenftel der
- * Zeit), damit Unterschiede innerhalb eines Trainings sichtbar werden.
+ * Zeit), damit Unterschiede innerhalb eines Trainings sichtbar werden. Das
+ * Tempo fuer die Farbe ist ueber eine Minute geglaettet (Median +-30 s), das
+ * Diagramm ueber 15 s, damit die Route nicht bei jeder kleinen Schwankung
+ * die Farbe wechselt.
  * Kilometer-Marken nach der Distanz von Apple (GPS-Strecke darauf skaliert),
  * damit sie zu den Splits passen.
  */
 
-const VERSION = "0.1.2";
+const VERSION = "0.1.3";
 const LEAFLET = "/ha_training/leaflet";
 
 const TEXT = {
@@ -46,7 +49,7 @@ const TEXT = {
     hrPeak: "Puls-Max", stop: "unter 1 (Stopp)", from: "ab", below: "unter",
     perKm: "min/km", appleEffort: "Apple-Schätzung", gpsRoute: "GPS-Route", min: "min", max: "max",
     noData: "keine Daten", height: "Höhe", humidity: "Luftfeuchte",
-    levelsSpeed: "Stufen aus diesem Training: je ¼ der Zeit in Bewegung",
+    levelsSpeed: "Stufen aus diesem Training: je ¼ der Zeit in Bewegung; Tempo für die Farbe über 1 min geglättet",
     levelsHr: "Stufen aus diesem Training: je ⅕ der Zeit",
   },
   en: {
@@ -65,7 +68,7 @@ const TEXT = {
     hrPeak: "Max HR", stop: "below 1 (stop)", from: "from", below: "below",
     perKm: "min/km", appleEffort: "Apple estimate", gpsRoute: "GPS route", min: "min", max: "max",
     noData: "no data", height: "Altitude", humidity: "humidity",
-    levelsSpeed: "Levels from this workout: ¼ of the moving time each",
+    levelsSpeed: "Levels from this workout: ¼ of the moving time each; speed for the colour smoothed over 1 min",
     levelsHr: "Levels from this workout: ⅕ of the time each",
   },
 };
@@ -92,7 +95,7 @@ const COLORS = {
 // nur, wenn ein Training zu wenige Werte fuer eigene Grenzen hat.
 const SCALES = {
   speed: {
-    field: "v", unit: "km/h", digits: 1, stop: 1, shares: [0.25, 0.5, 0.75],
+    field: "vc", unit: "km/h", digits: 1, stop: 1, shares: [0.25, 0.5, 0.75],
     limits: [1, 2.5, 3.3, 3.8], ramp: ["violett", "blau", "mint", "limette", "sonnengelb"],
   },
   heart_rate: {
@@ -102,6 +105,27 @@ const SCALES = {
 };
 const MIN_VALUES = 30;
 const GAP_S = 90;
+const SMOOTH_CHART_S = 7;   // Diagramm: Median ueber +-7 s (15 s)
+const SMOOTH_COLOR_S = 30;  // Farbe der Route: Median ueber +-30 s (1 min)
+
+// Gleitender Median nach Zeit: fuer jeden Punkt der Median aller Werte
+// innerhalb von +-half Sekunden (bei gerader Anzahl der obere). Fehlende
+// Werte zaehlen nicht; ohne Wert im Fenster null.
+function medianSmooth(times, values, half) {
+  const out = new Array(times.length).fill(null);
+  let lo = 0, hi = 0;
+  for (let i = 0; i < times.length; i++) {
+    while (times[lo] < times[i] - half) lo++;
+    while (hi < times.length && times[hi] <= times[i] + half) hi++;
+    const window = [];
+    for (let j = lo; j < hi; j++) if (values[j] != null) window.push(values[j]);
+    if (window.length) {
+      window.sort((a, b) => a - b);
+      out[i] = window[Math.floor(window.length / 2)];
+    }
+  }
+  return out;
+}
 
 // Wert beim Anteil p einer sortierten Liste (linear zwischen Nachbarn)
 function quantile(sorted, p) {
@@ -303,15 +327,11 @@ class HaTrainingCard extends HTMLElement {
       const sample = hr.length && hr[h][0] <= t && t - hr[h][0] < 120 ? hr[h][2] : null;
       this._points.push({ t, lat, lon, alt, speed, hr: sample, d: dist });
     }
-    for (let i = 0; i < this._points.length; i++) {
-      const window = [];
-      for (let j = Math.max(0, i - 7); j <= Math.min(this._points.length - 1, i + 7); j++) {
-        const p = this._points[j];
-        if (Math.abs(p.t - this._points[i].t) <= 7 && p.speed != null) window.push(p.speed);
-      }
-      window.sort((a, b) => a - b);
-      this._points[i].v = window.length ? window[Math.floor(window.length / 2)] * 3.6 : null;
-    }
+    const times = this._points.map((p) => p.t);
+    const speeds = this._points.map((p) => (p.speed == null ? null : p.speed * 3.6));
+    const chart = medianSmooth(times, speeds, SMOOTH_CHART_S);
+    const color = medianSmooth(times, speeds, SMOOTH_COLOR_S);
+    this._points.forEach((p, i) => { p.v = chart[i]; p.vc = color[i]; });
     this._dFactor = distanceFactor(this._summary?.distance_km, dist);
   }
 

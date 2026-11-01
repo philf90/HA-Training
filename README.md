@@ -14,7 +14,7 @@ dieser Integration. Home Assistant speichert die Trainings privat, zeigt das
 letzte Training und die Woche als Sensoren und meldet neue Trainings als
 Ereignis. Die mitgelieferte Karte zeichnet die Route auf einer Karte, nach
 Tempo oder Puls eingefärbt, mit gekoppeltem Verlauf und Kilometer-Tabelle.
-Version 0.1.2.
+Version 0.1.3.
 
 ## Inhalt
 
@@ -158,7 +158,11 @@ color_by: speed      # oder heart_rate
   langsamer war; die Legende nennt die Werte. Farbreihen aus der Palette:
   Tempo Violett, Blau, Mint, Limette, Sonnengelb; Puls Blau, Mint, Limette,
   Amber, Koralle (benachbarte Stufen mindestens ΔE 2000 = 16 auseinander).
-  Hat ein Training weniger als 30 Werte, gelten feste Grenzen.
+  Hat ein Training weniger als 30 Werte, gelten feste Grenzen. Das Tempo für
+  die Farbe ist über eine Minute geglättet (Median ±30 s), das Diagramm über
+  15 s: Die Route zeigt längere Abschnitte statt jeder kleinen Schwankung,
+  dafür erscheinen Stopps unter etwa 30 s dort nicht mehr violett (im
+  Diagramm weiterhin).
 - Markiert sind Start, Ziel, Kilometer, Pausen und die Minute mit dem
   höchsten Puls. Nahe Marken werden zusammengefasst.
 - Puls (Ø mit Band min–max) und Tempo als zwei Diagramme mit gemeinsamer
@@ -178,7 +182,7 @@ HACS zeigt neue Versionen als Update an. Nach dem Herunterladen Home Assistant
 neu starten, danach einmal die Seite neu laden, in der Companion App den
 Frontend-Cache zurücksetzen.
 
-**Update auf 0.1.2:** keine Migration. Nur die Karte ändert sich (siehe
+**Update auf 0.1.3:** keine Migration. Nur die Karte ändert sich (siehe
 Release-Hinweise).
 
 ## Datenschutz und Speicher
@@ -215,7 +219,9 @@ Release-Hinweise).
 
 ## Teststand
 
-- **0.1.x:** 59 automatische Tests. 0.1.2: Stufen aus dem Training
+- **0.1.x:** 62 automatische Tests. 0.1.3: Glättung der Routenfarbe
+  (kurzer Abschnitt bleibt im Diagramm, nicht in der Farbe; Fenster nach
+  Zeit, nicht nach Index). 0.1.2: Stufen aus dem Training
   (Viertel, Fünftel, streng steigend, Rückfall bei wenigen Werten),
   Abschnitte und Einzelwerte in Lücken, Umrechnung GPS auf Apple-Distanz,
   Abstand der Farbstufen (ΔE 2000), Kartenfläche mit eigener Ebene unter den
@@ -232,7 +238,8 @@ Release-Hinweise).
   mit einem echten Export gezeichnet, ohne Fehler und ohne waagrechten
   Überlauf; Kennzahlen und Splits stimmen mit der App überein. Live geprüft
   (31.10.2026): Annahme über den Webhook aus Health Auto Export und die Karte
-  im Dashboard (0.1.1, iPhone).
+  im Dashboard (0.1.1 und 0.1.2, iPhone; mit 0.1.2 Karte unter den Leisten,
+  Marken und Farben bestätigt).
 
 ## Tests
 
