@@ -3,27 +3,43 @@
     "step": {
       "user": {
         "title": "Training",
-        "description": "Legt eine geheime Webhook-Adresse für die REST-Automation von Health Auto Export an. Die Adresse steht nach der Einrichtung da und später unter Konfigurieren."
+        "description": "Legt eine geheime Webhook-Adresse und einen Token für die REST-API-Automation von Health Auto Export an. Beide stehen nach der Einrichtung da und später unter Konfigurieren."
+      },
+      "reconfigure": {
+        "title": "Training",
+        "description": "Erzeugt eine neue Webhook-Adresse oder einen neuen Token. Die gespeicherten Trainings bleiben erhalten. Danach die neuen Werte in Health Auto Export eintragen; bis dahin kann die App keine Trainings liefern.",
+        "data": {
+          "new_webhook": "Neue Webhook-Adresse",
+          "new_token": "Neuer Token"
+        },
+        "data_description": {
+          "new_webhook": "Die alte Adresse gilt sofort nicht mehr.",
+          "new_token": "Der alte Token gilt sofort nicht mehr."
+        }
       }
     },
     "create_entry": {
-      "default": "Webhook-Adresse für Health Auto Export (Automation REST-API, Methode POST):\n\n{url}\n\nIn Health Auto Export: Datentyp Workouts, Exportversion 2, „Include Route Data“ und „Include Workout Metrics“ an, Zeitraster Sekunden. Die Adresse geheim halten: Wer sie kennt, kann Trainings anlegen."
+      "default": "Webhook-Adresse für Health Auto Export (Automation REST-API, Methode POST):\n\n{url}\n\nUnter „HTTP Headers“ der Automation einen Header mit dem Schlüssel `Authorization` und diesem Wert anlegen:\n\n{header}\n\nOhne diesen Header lehnt der Webhook Aufrufe ab. Außerdem in Health Auto Export: Datentyp Workouts, Exportversion 2, „Include Route Data“ und „Include Workout Metrics“ an, Zeitraster Sekunden. Adresse und Token geheim halten: Wer beide kennt, kann Trainings anlegen."
     },
     "abort": {
       "already_configured": "Training ist schon eingerichtet.",
-      "single_instance_allowed": "Training ist schon eingerichtet."
+      "single_instance_allowed": "Training ist schon eingerichtet.",
+      "reconfigure_successful": "Erledigt. Die neuen Werte in der REST-API-Automation von Health Auto Export eintragen:\n\nURL: {url}\n\nHTTP-Header `Authorization`: {header}\n\nBeides steht auch unter Konfigurieren.",
+      "reconfigure_unchanged": "Nichts ausgewählt; Adresse und Token sind unverändert."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Training",
-        "description": "Webhook-Adresse für Health Auto Export:\n\n{url}\n\nGeheim halten.",
+        "description": "Webhook-Adresse für Health Auto Export:\n\n{url}\n\nHTTP-Header in der Automation: Schlüssel `Authorization`, Wert:\n\n{header}\n\nBeides geheim halten. Neue Adresse oder neuer Token: „Neu konfigurieren“ im Menü der Integration.",
         "data": {
-          "keep_details": "Trainings mit Route und Verläufen"
+          "keep_details": "Trainings mit Route und Verläufen",
+          "require_token": "Token verlangen"
         },
         "data_description": {
-          "keep_details": "Ältere Trainings behalten ihre Zusammenfassung; Route und Verläufe werden gelöscht. Eine Stunde Gehen mit einem GPS-Punkt pro Sekunde braucht rund 170 KB."
+          "keep_details": "Ältere Trainings behalten ihre Zusammenfassung; Route und Verläufe werden gelöscht. Eine Stunde Gehen mit einem GPS-Punkt pro Sekunde braucht rund 170 KB.",
+          "require_token": "Lehnt Aufrufe ohne den Header oben ab (HTTP 401). Erst einschalten, wenn der Header in Health Auto Export eingetragen ist."
         }
       }
     }

@@ -7,6 +7,17 @@ TITLE = "Training"
 # kennt, kann Trainings anlegen. Nie ins Log und nie in die Diagnose.
 CONF_WEBHOOK_ID = "webhook_id"
 
+# Zweiter Schluessel im Header "Authorization: Bearer <token>". Anders als die
+# Webhook-ID steht er nicht im Pfad der Adresse und damit nicht in den
+# Zugriffsprotokollen von Proxys. Nie ins Log und nie in die Diagnose.
+CONF_TOKEN = "token"
+# Option: Aufrufe ohne gueltigen Token ablehnen. Neu eingerichtete Eintraege
+# verlangen ihn, nach dem Update von 0.1.4 ist er aus, bis man ihn einschaltet.
+CONF_REQUIRE_TOKEN = "require_token"
+# Felder des Schritts "Neu konfigurieren"
+CONF_NEW_WEBHOOK = "new_webhook"
+CONF_NEW_TOKEN = "new_token"
+
 # Wie viele Trainings ihre Details (Route, Puls- und Tempoverlauf) behalten.
 # Die Zusammenfassung bleibt fuer alle Trainings erhalten, sie ist klein.
 # Eine Stunde Gehen mit einem GPS-Punkt pro Sekunde braucht rund 170 KB.

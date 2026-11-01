@@ -3,27 +3,43 @@
     "step": {
       "user": {
         "title": "Training",
-        "description": "Creates a secret webhook address for the REST automation of Health Auto Export. The address is shown after setup and later under Configure."
+        "description": "Creates a secret webhook address and a token for the REST API automation of Health Auto Export. Both are shown after setup and later under Configure."
+      },
+      "reconfigure": {
+        "title": "Training",
+        "description": "Creates a new webhook address or a new token. Saved workouts are kept. Afterwards enter the new values in Health Auto Export; until then it cannot deliver workouts.",
+        "data": {
+          "new_webhook": "New webhook address",
+          "new_token": "New token"
+        },
+        "data_description": {
+          "new_webhook": "The old address stops working at once.",
+          "new_token": "The old token stops working at once."
+        }
       }
     },
     "create_entry": {
-      "default": "Webhook address for Health Auto Export (REST API automation, method POST):\n\n{url}\n\nIn Health Auto Export: data type Workouts, export version 2, Include Route Data and Include Workout Metrics on, time grouping Seconds. Keep the address secret: anyone who knows it can add workouts."
+      "default": "Webhook address for Health Auto Export (REST API automation, method POST):\n\n{url}\n\nUnder HTTP Headers of the automation, add a header with the key `Authorization` and this value:\n\n{header}\n\nWithout this header the webhook rejects calls. Also in Health Auto Export: data type Workouts, export version 2, Include Route Data and Include Workout Metrics on, time grouping Seconds. Keep address and token secret: anyone who knows both can add workouts."
     },
     "abort": {
       "already_configured": "Training is already set up.",
-      "single_instance_allowed": "Training is already set up."
+      "single_instance_allowed": "Training is already set up.",
+      "reconfigure_successful": "Done. Enter the new values in the REST API automation of Health Auto Export:\n\nURL: {url}\n\nHTTP header `Authorization`: {header}\n\nBoth are also shown under Configure.",
+      "reconfigure_unchanged": "Nothing selected; address and token are unchanged."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Training",
-        "description": "Webhook address for Health Auto Export:\n\n{url}\n\nKeep it secret.",
+        "description": "Webhook address for Health Auto Export:\n\n{url}\n\nHTTP header in the automation: key `Authorization`, value:\n\n{header}\n\nKeep both secret. A new address or a new token: Reconfigure in the menu of the integration.",
         "data": {
-          "keep_details": "Workouts with route and charts"
+          "keep_details": "Workouts with route and charts",
+          "require_token": "Require token"
         },
         "data_description": {
-          "keep_details": "Older workouts keep their summary; route and charts are deleted. One hour of walking with one GPS point per second needs about 170 KB."
+          "keep_details": "Older workouts keep their summary; route and charts are deleted. One hour of walking with one GPS point per second needs about 170 KB.",
+          "require_token": "Rejects calls without the header above (HTTP 401). Turn it on only after the header is entered in Health Auto Export."
         }
       }
     }

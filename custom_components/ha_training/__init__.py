@@ -9,11 +9,12 @@ WebSocket-API (nur fuer angemeldete Nutzer).
 
 from __future__ import annotations
 
+import hmac
 import logging
 from dataclasses import dataclass
 from pathlib import Path
 
-from aiohttp import web
+from aiohttp import hdrs, web
 from homeassistant.components import webhook
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
@@ -28,6 +29,8 @@ from .const import (
     CARD,
     CARD_PATH,
     CONF_KEEP_DETAILS,
+    CONF_REQUIRE_TOKEN,
+    CONF_TOKEN,
     CONF_WEBHOOK_ID,
     DEFAULT_KEEP_DETAILS,
     DOMAIN,
@@ -87,6 +90,25 @@ async def _async_register_card(hass: HomeAssistant) -> None:
     add_extra_js_url(hass, f"{CARD_PATH}/{CARD}?v={integration.version}")
 
 
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """1.1 -> 1.2: Token anlegen. Er ist aus, damit Health Auto Export weiter
+    ohne Header senden kann, bis man ihn dort eingetragen und hier eingeschaltet
+    hat."""
+    if entry.version > 1:
+        return False
+    if entry.minor_version < 2:
+        from .config_flow import generate_token
+
+        hass.config_entries.async_update_entry(
+            entry,
+            data={**entry.data, CONF_TOKEN: generate_token()},
+            options={**entry.options, CONF_REQUIRE_TOKEN: False},
+            minor_version=2,
+        )
+        _LOGGER.info("Training: Token angelegt, Token-Pflicht aus (Konfigurieren)")
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: TrainingConfigEntry) -> bool:
     store = TrainingStore(
         hass,
@@ -101,20 +123,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: TrainingConfigEntry) -> 
     ) -> web.Response:
         return await _async_handle_webhook(hass, entry, request)
 
+    # Die ID beim Anmelden festhalten: Nach "Neu konfigurieren" steht in
+    # entry.data schon die neue, abgemeldet werden muss aber die alte.
+    webhook_id = entry.data[CONF_WEBHOOK_ID]
     webhook.async_register(
         hass,
         DOMAIN,
         TITLE,
-        entry.data[CONF_WEBHOOK_ID],
+        webhook_id,
         handle_webhook,
         # Health Auto Export sendet auch von unterwegs, also ueber die externe
         # Adresse; geschuetzt ist der Webhook durch seine geheime ID.
         local_only=False,
         allowed_methods=["POST"],
     )
-    entry.async_on_unload(
-        lambda: webhook.async_unregister(hass, entry.data[CONF_WEBHOOK_ID])
-    )
+    entry.async_on_unload(lambda: webhook.async_unregister(hass, webhook_id))
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
@@ -124,6 +147,14 @@ async def _async_handle_webhook(
     hass: HomeAssistant, entry: TrainingConfigEntry, request: web.Request
 ) -> web.Response:
     """REST-Aufruf von Health Auto Export annehmen."""
+    # Vor dem Lesen des Inhalts: Ohne Token wird nichts geparst
+    if not _token_ok(entry, request):
+        _LOGGER.warning("Webhook: Aufruf ohne gueltigen Token abgelehnt")
+        return web.json_response(
+            {"fehler": "token fehlt oder falsch"},
+            status=401,
+            headers={hdrs.WWW_AUTHENTICATE: "Bearer"},
+        )
     try:
         payload = await request.json()
     except ValueError:
@@ -147,6 +178,24 @@ async def _async_handle_webhook(
             "geaendert": updated,
             "verworfen": rejected,
         }
+    )
+
+
+def _token_ok(entry: TrainingConfigEntry, request: web.Request) -> bool:
+    """Header "Authorization: Bearer <token>" pruefen, wenn er verlangt ist.
+
+    Home Assistant wertet denselben Header als eigenes Zugangstoken aus; ein
+    fremder Wert macht die Anfrage nur "nicht angemeldet", was der Webhook
+    nicht braucht (keine Sperre, kein Fehlversuch).
+    """
+    if not entry.options.get(CONF_REQUIRE_TOKEN, False):
+        return True
+    scheme, _, given = request.headers.get(hdrs.AUTHORIZATION, "").partition(" ")
+    if scheme.lower() != "bearer":
+        return False
+    return hmac.compare_digest(
+        given.strip().encode("utf-8", "replace"),
+        entry.data[CONF_TOKEN].encode("utf-8"),
     )
 
 
