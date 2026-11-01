@@ -28,6 +28,7 @@ from .const import (
     CONF_NEW_TOKEN,
     CONF_NEW_WEBHOOK,
     CONF_REQUIRE_TOKEN,
+    CONF_ROUTE_USERS,
     CONF_TOKEN,
     CONF_WEBHOOK_ID,
     DEFAULT_KEEP_DETAILS,
@@ -127,40 +128,72 @@ class TrainingConfigFlow(ConfigFlow, domain=DOMAIN):
         return TrainingOptionsFlow()
 
 
+async def other_users(hass: HomeAssistant) -> list[selector.SelectOptionDict]:
+    """Aktive Konten ohne Administratorrechte (die sehen Routen ohnehin)."""
+    users = await hass.auth.async_get_users()
+    return sorted(
+        (
+            selector.SelectOptionDict(value=u.id, label=u.name or u.id)
+            for u in users
+            if u.is_active and not u.system_generated and not u.is_admin
+        ),
+        key=lambda option: option["label"].lower(),
+    )
+
+
 class TrainingOptionsFlow(OptionsFlow):
-    """Zeigt Adresse und Token erneut, stellt Aufbewahrung und Token-Pflicht ein."""
+    """Zeigt Adresse und Token erneut, stellt Aufbewahrung, Token-Pflicht und
+    die Konten ein, die Routen sehen duerfen."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        options = self.config_entry.options
+        users = await other_users(self.hass)
         if user_input is not None:
+            known = {u["value"] for u in users}
             return self.async_create_entry(
                 data={
                     CONF_KEEP_DETAILS: int(user_input[CONF_KEEP_DETAILS]),
                     CONF_REQUIRE_TOKEN: bool(user_input[CONF_REQUIRE_TOKEN]),
+                    # Ohne Auswahlfeld (kein anderes Konto) bleibt es leer;
+                    # geloeschte oder inzwischen zu Admins gemachte Konten fallen raus
+                    CONF_ROUTE_USERS: [
+                        u for u in user_input.get(CONF_ROUTE_USERS, []) if u in known
+                    ],
                 }
             )
-        options = self.config_entry.options
         keep = options.get(CONF_KEEP_DETAILS, DEFAULT_KEEP_DETAILS)
         require = options.get(CONF_REQUIRE_TOKEN, False)
+        schema: dict[Any, Any] = {
+            vol.Required(CONF_KEEP_DETAILS, default=keep): (
+                selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=MIN_KEEP_DETAILS,
+                        max=MAX_KEEP_DETAILS,
+                        step=10,
+                        mode=selector.NumberSelectorMode.BOX,
+                    )
+                )
+            ),
+            vol.Required(
+                CONF_REQUIRE_TOKEN, default=require
+            ): selector.BooleanSelector(),
+        }
+        if users:
+            known = {u["value"] for u in users}
+            chosen = [u for u in options.get(CONF_ROUTE_USERS, []) if u in known]
+            schema[vol.Optional(CONF_ROUTE_USERS, default=chosen)] = (
+                selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=users,
+                        multiple=True,
+                        mode=selector.SelectSelectorMode.LIST,
+                    )
+                )
+            )
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_KEEP_DETAILS, default=keep): (
-                        selector.NumberSelector(
-                            selector.NumberSelectorConfig(
-                                min=MIN_KEEP_DETAILS,
-                                max=MAX_KEEP_DETAILS,
-                                step=10,
-                                mode=selector.NumberSelectorMode.BOX,
-                            )
-                        )
-                    ),
-                    vol.Required(
-                        CONF_REQUIRE_TOKEN, default=require
-                    ): selector.BooleanSelector(),
-                }
-            ),
+            data_schema=vol.Schema(schema),
             description_placeholders=placeholders(self.hass, self.config_entry.data),
         )

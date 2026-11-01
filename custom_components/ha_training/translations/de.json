@@ -35,11 +35,13 @@
         "description": "Webhook-Adresse für Health Auto Export:\n\n{url}\n\nHTTP-Header in der Automation: Schlüssel `Authorization`, Wert:\n\n{header}\n\nBeides geheim halten. Neue Adresse oder neuer Token: „Neu konfigurieren“ im Menü der Integration.",
         "data": {
           "keep_details": "Trainings mit Route und Verläufen",
-          "require_token": "Token verlangen"
+          "require_token": "Token verlangen",
+          "route_users": "Weitere Konten, die Routen sehen dürfen"
         },
         "data_description": {
           "keep_details": "Ältere Trainings behalten ihre Zusammenfassung; Route und Verläufe werden gelöscht. Eine Stunde Gehen mit einem GPS-Punkt pro Sekunde braucht rund 170 KB.",
-          "require_token": "Lehnt Aufrufe ohne den Header oben ab (HTTP 401). Erst einschalten, wenn der Header in Health Auto Export eingetragen ist."
+          "require_token": "Lehnt Aufrufe ohne den Header oben ab (HTTP 401). Erst einschalten, wenn der Header in Health Auto Export eingetragen ist.",
+          "route_users": "Administratoren sehen Route, Verläufe und den GPX-Export immer. Andere Konten sehen nur die Zusammenfassung (dieselben Werte wie die Sensoren), außer sie sind hier ausgewählt."
         }
       }
     }

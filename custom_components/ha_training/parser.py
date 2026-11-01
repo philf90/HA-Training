@@ -20,6 +20,7 @@ from datetime import datetime
 from typing import Any
 
 from homeassistant.util import dt as dt_util
+from homeassistant.util.json import json_loads
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -366,6 +367,39 @@ def parse_workout(raw: Any) -> tuple[dict[str, Any], dict[str, Any]]:
         "active_kcal": _series(raw.get("activeEnergy"), _kcal),
     }
     return summary, detail
+
+
+# Obergrenze je Aufruf. Eine Stunde Training mit Route und Sekunden-Puls hat
+# im JSON rund 1 MB, ins Limit von 16 MB passen also nur wenige solche
+# Trainings; ohne Route einige Tausend. 1000 laesst jeden normalen Abgleich durch und begrenzt, wie
+# viele Trainings ein einziger Aufruf anlegen kann.
+MAX_WORKOUTS_PER_CALL = 1000
+
+
+class PayloadError(ValueError):
+    """Aufruf als Ganzes unbrauchbar: kein JSON oder zu viele Trainings."""
+
+    def __init__(self, code: str, limit: int | None = None) -> None:
+        super().__init__(code)
+        self.code = code
+        self.limit = limit
+
+
+def decode_and_parse(body: bytes) -> tuple[list[tuple[dict, dict]], int]:
+    """Rohen Inhalt dekodieren und parsen; fuer den Executor gedacht.
+
+    Beides kostet bei grossen Exporten spuerbar Rechenzeit und darf deshalb
+    nicht im Event-Loop laufen. Reine Funktion ohne Zustand von Home Assistant.
+    """
+    try:
+        payload = json_loads(body)
+    except ValueError as err:
+        raise PayloadError("kein JSON") from err
+    data = payload.get("data") if isinstance(payload, dict) else None
+    workouts = data.get("workouts") if isinstance(data, dict) else None
+    if isinstance(workouts, list) and len(workouts) > MAX_WORKOUTS_PER_CALL:
+        raise PayloadError("zu viele Trainings", MAX_WORKOUTS_PER_CALL)
+    return parse_payload(payload)
 
 
 def parse_payload(payload: Any) -> tuple[list[tuple[dict, dict]], int]:

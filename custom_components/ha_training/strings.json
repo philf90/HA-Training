@@ -35,11 +35,13 @@
         "description": "Webhook address for Health Auto Export:\n\n{url}\n\nHTTP header in the automation: key `Authorization`, value:\n\n{header}\n\nKeep both secret. A new address or a new token: Reconfigure in the menu of the integration.",
         "data": {
           "keep_details": "Workouts with route and charts",
-          "require_token": "Require token"
+          "require_token": "Require token",
+          "route_users": "Other accounts that may see routes"
         },
         "data_description": {
           "keep_details": "Older workouts keep their summary; route and charts are deleted. One hour of walking with one GPS point per second needs about 170 KB.",
-          "require_token": "Rejects calls without the header above (HTTP 401). Turn it on only after the header is entered in Health Auto Export."
+          "require_token": "Rejects calls without the header above (HTTP 401). Turn it on only after the header is entered in Health Auto Export.",
+          "route_users": "Administrators always see routes, charts and the GPX export. Other accounts only see the summary (the same values as the sensors) unless they are selected here."
         }
       }
     }

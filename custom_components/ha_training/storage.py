@@ -40,8 +40,16 @@ class TrainingStore:
         self._hass = hass
         self._entry_id = entry_id
         self.keep_details = keep_details
+        # serialize_in_event_loop=False: Home Assistant erzeugt das JSON dann im
+        # Executor statt im Event-Loop (helpers/storage.py, Standard ist True).
+        # Erlaubt, weil der Index als Kopie und die Details als frisch geparste,
+        # danach unveraenderte Daten uebergeben werden.
         self._index: Store[dict[str, Any]] = Store(
-            hass, STORAGE_VERSION, f"{STORAGE_INDEX}.{entry_id}", private=True
+            hass,
+            STORAGE_VERSION,
+            f"{STORAGE_INDEX}.{entry_id}",
+            private=True,
+            serialize_in_event_loop=False,
         )
         self.workouts: list[dict[str, Any]] = []
         self.deleted: set[str] = set()
@@ -53,6 +61,7 @@ class TrainingStore:
             STORAGE_VERSION,
             _detail_key(self._entry_id, workout_id),
             private=True,
+            serialize_in_event_loop=False,
         )
 
     async def async_load(self) -> None:
@@ -67,8 +76,12 @@ class TrainingStore:
         )
 
     async def _async_save_index(self) -> None:
+        # Kopie: der Executor serialisiert, waehrend der Event-Loop weiterlaeuft
         await self._index.async_save(
-            {"workouts": self.workouts, "deleted": sorted(self.deleted)}
+            {
+                "workouts": [dict(w) for w in self.workouts],
+                "deleted": sorted(self.deleted),
+            }
         )
 
     def get(self, workout_id: str) -> dict[str, Any] | None:
@@ -95,36 +108,74 @@ class TrainingStore:
     async def _async_add(
         self, parsed: list[tuple[dict[str, Any], dict[str, Any]]]
     ) -> tuple[list[dict[str, Any]], int, int]:
+        """In zwei Schritten, damit ein Aufruf mit vielen Trainings linear bleibt.
+
+        1. Zusammenfassungen einordnen; die Suche nach der ID geht ueber ein
+           Dict statt durch die Liste (vorher quadratisch: 5000 Trainings
+           blockierten den Event-Loop fast 5 s).
+        2. Nach dem Sortieren Details nur fuer Trainings innerhalb der
+           Aufbewahrung schreiben. Was dahinter liegt, wuerde sonst geschrieben
+           und gleich wieder geloescht.
+        """
         new: list[dict[str, Any]] = []
         updated = 0
         skipped = 0
+        restore: set[str] = set()  # unveraendert, aber ohne Details
+        pending: dict[str, dict[str, Any]] = {}
+        position = {w.get("id"): i for i, w in enumerate(self.workouts)}
+        added: dict[str, int] = {}  # in diesem Aufruf neu -> Stelle in new
         for summary, detail in parsed:
-            if summary["id"] in self.deleted:
+            workout_id = summary["id"]
+            if workout_id in self.deleted:
                 skipped += 1
                 continue
-            old = self.get(summary["id"])
-            if old is None:
-                summary = {**summary, "has_detail": True}
-                self.workouts.append(summary)
-                new.append(summary)
-                await self._detail_store(summary["id"]).async_save(detail)
+            i = position.get(workout_id)
+            if workout_id in added:
+                # Dieselbe ID zweimal in einem Aufruf: die letzte Fassung gilt,
+                # es bleibt ein neues Training
+                entry = {**summary, "has_detail": False}
+                self.workouts[i] = entry
+                new[added[workout_id]] = entry
+                pending[workout_id] = detail
                 continue
-            position = self.workouts.index(old)
-            # Liegt das Training hinter der Aufbewahrung, wuerden seine Details
-            # gleich wieder geloescht. Unveraendert: ueberspringen; geaendert:
-            # nur die Zusammenfassung ersetzen. Innerhalb der Aufbewahrung holt
-            # ein erneut geschicktes Training fehlende Details zurueck.
-            keep = position < self.keep_details or bool(old.get("has_detail"))
+            if i is None:
+                entry = {**summary, "has_detail": False}
+                position[workout_id] = len(self.workouts)
+                added[workout_id] = len(new)
+                self.workouts.append(entry)
+                new.append(entry)
+                pending[workout_id] = detail
+                continue
+            old = self.workouts[i]
             unchanged = {k: v for k, v in old.items() if k != "has_detail"} == summary
-            if unchanged and (old.get("has_detail") or not keep):
+            if unchanged:
+                if old.get("has_detail"):
+                    continue
+                # Holt fehlende Details zurueck, wenn es in der Aufbewahrung
+                # liegt (z. B. nach dem Erhoehen in den Optionen)
+                restore.add(workout_id)
+            else:
+                self.workouts[i] = {
+                    **summary,
+                    "has_detail": bool(old.get("has_detail")),
+                }
+                updated += 1
+            pending[workout_id] = detail
+        if not pending:
+            return new, updated, skipped
+        self.workouts.sort(key=lambda w: w.get("start") or "", reverse=True)
+        kept = {w.get("id"): w for w in self.workouts[: self.keep_details]}
+        changed = bool(new) or updated > 0
+        for workout_id, detail in pending.items():
+            workout = kept.get(workout_id)
+            if workout is None:
                 continue
-            summary = {**summary, "has_detail": keep}
-            self.workouts[position] = summary
-            updated += 1
-            if keep:
-                await self._detail_store(summary["id"]).async_save(detail)
-        if new or updated:
-            self.workouts.sort(key=lambda w: w.get("start") or "", reverse=True)
+            await self._detail_store(workout_id).async_save(detail)
+            workout["has_detail"] = True
+            if workout_id in restore:
+                updated += 1
+                changed = True
+        if changed:
             await self._async_prune()
             await self._async_save_index()
         return new, updated, skipped

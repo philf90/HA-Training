@@ -88,7 +88,7 @@ async def test_migration_from_0_1_4_keeps_webhook_open(
 async def test_without_valid_token_rejected(
     hass: HomeAssistant, token_entry, hass_client_no_auth, header
 ):
-    with patch("custom_components.ha_training.parse_payload") as parse:
+    with patch("custom_components.ha_training.decode_and_parse") as parse:
         response = await send(hass_client_no_auth, header)
     assert response.status == 401
     assert response.headers["WWW-Authenticate"] == "Bearer"
@@ -116,7 +116,11 @@ async def test_option_switches_token_without_reload(
         result["flow_id"], {CONF_KEEP_DETAILS: 200, CONF_REQUIRE_TOKEN: True}
     )
     await hass.async_block_till_done()
-    assert entry.options == {CONF_KEEP_DETAILS: 200, CONF_REQUIRE_TOKEN: True}
+    assert entry.options == {
+        CONF_KEEP_DETAILS: 200,
+        CONF_REQUIRE_TOKEN: True,
+        "route_users": [],
+    }
     assert (await send(hass_client_no_auth, None)).status == 401
     assert (await send(hass_client_no_auth, header)).status == 200
 
