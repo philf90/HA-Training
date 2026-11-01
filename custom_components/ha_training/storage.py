@@ -53,6 +53,10 @@ class TrainingStore:
         )
         self.workouts: list[dict[str, Any]] = []
         self.deleted: set[str] = set()
+        # Zaehlt jede Aenderung, die man sehen kann (neu, geaendert, geloescht,
+        # Details entfernt). Die Karte laedt neu, wenn er sich aendert; nicht
+        # gespeichert, nach einem Neustart beginnt er wieder bei 0.
+        self.revision = 0
         self._lock = asyncio.Lock()
 
     def _detail_store(self, workout_id: str) -> Store[dict[str, Any]]:
@@ -176,6 +180,7 @@ class TrainingStore:
                 updated += 1
                 changed = True
         if changed:
+            self.revision += 1
             await self._async_prune()
             await self._async_save_index()
         return new, updated, skipped
@@ -190,6 +195,7 @@ class TrainingStore:
     async def async_set_keep_details(self, keep: int) -> None:
         async with self._lock:
             self.keep_details = keep
+            self.revision += 1
             await self._async_prune()
             await self._async_save_index()
 
@@ -201,6 +207,7 @@ class TrainingStore:
                 return None
             self.workouts.remove(workout)
             self.deleted.add(workout_id)
+            self.revision += 1
             # Auch ohne has_detail: eine Datei aus einem abgebrochenen Lauf
             await self._detail_store(workout_id).async_remove()
             await self._async_save_index()

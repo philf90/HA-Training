@@ -1,4 +1,9 @@
-"""Sensoren: letztes Training und Summen der laufenden Woche (Montag bis Sonntag)."""
+"""Sensoren: letztes Training, Summen der laufenden und der letzten Woche.
+
+Die Summen der letzten Woche rechnen jederzeit neu. So zaehlt ein Training vom
+Sonntagabend, das erst am Montag ankommt (iOS entscheidet, wann Health Auto
+Export sendet), wenigstens dort; in der laufenden Woche zaehlt es nicht.
+"""
 
 from __future__ import annotations
 
@@ -44,19 +49,29 @@ def week_start(now: datetime) -> datetime:
 SORT_MARGIN = timedelta(days=2)
 
 
-def week_workouts(store: TrainingStore, now: datetime) -> list[dict[str, Any]]:
-    """Trainings ab Montag 00:00; bricht ab, sobald die Liste aelter wird.
+def previous_week_start(now: datetime) -> datetime:
+    """Montag 00:00 Ortszeit der Vorwoche (ueber den Kalender, sicher bei DST)."""
+    monday = week_start(now).date() - timedelta(days=7)
+    return dt_util.start_of_local_day(monday)
+
+
+def week_workouts(
+    store: TrainingStore, now: datetime, previous: bool = False
+) -> list[dict[str, Any]]:
+    """Trainings der laufenden (oder letzten) Woche; bricht ab, sobald die Liste
+    aelter wird.
 
     Vorher parste jeder der vier Wochensensoren bei jeder Aktualisierung die
     Startzeit aller Trainings (bei 20 000 Trainings 1,7 s im Event-Loop).
     """
-    begin = week_start(now)
+    end = week_start(now)
+    begin = previous_week_start(now) if previous else end
     result = []
     for w in store.workouts:
         start = parse_time(w.get("start"))
         if start is None:
             continue
-        if start >= begin:
+        if begin <= start and (not previous or start < end):
             result.append(w)
         elif start < begin - SORT_MARGIN:
             break
@@ -73,9 +88,12 @@ def _latest(key: str, factor: float = 1) -> Callable[[TrainingStore, datetime], 
     return value
 
 
-def _week_sum(key: str, factor: float = 1) -> Callable[[TrainingStore, datetime], Any]:
+def _week_sum(
+    key: str, factor: float = 1, previous: bool = False
+) -> Callable[[TrainingStore, datetime], Any]:
     def value(store: TrainingStore, now: datetime) -> Any:
-        return sum((w.get(key) or 0) for w in week_workouts(store, now)) * factor
+        workouts = week_workouts(store, now, previous)
+        return sum((w.get(key) or 0) for w in workouts) * factor
 
     return value
 
@@ -87,6 +105,10 @@ def _latest_start(store: TrainingStore, now: datetime) -> Any:
 
 def _week_count(store: TrainingStore, now: datetime) -> Any:
     return len(week_workouts(store, now))
+
+
+def _last_week_count(store: TrainingStore, now: datetime) -> Any:
+    return len(week_workouts(store, now, previous=True))
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -197,6 +219,41 @@ SENSORS: tuple[TrainingSensorDescription, ...] = (
         value_fn=_week_sum("active_kcal"),
         week=True,
     ),
+    # Letzte Woche: ohne state_class. Der Wert aendert sich, wenn ein Training
+    # nachtraeglich ankommt oder geloescht wird; als Summe mit last_reset waere
+    # das fuer die Langzeitstatistik eine zweite, ueberlappende Zaehlung.
+    TrainingSensorDescription(
+        key="last_week_count",
+        translation_key="last_week_count",
+        value_fn=_last_week_count,
+        week=True,
+    ),
+    TrainingSensorDescription(
+        key="last_week_distance",
+        translation_key="last_week_distance",
+        device_class=SensorDeviceClass.DISTANCE,
+        native_unit_of_measurement=UnitOfLength.KILOMETERS,
+        suggested_display_precision=1,
+        value_fn=_week_sum("distance_km", previous=True),
+        week=True,
+    ),
+    TrainingSensorDescription(
+        key="last_week_duration",
+        translation_key="last_week_duration",
+        device_class=SensorDeviceClass.DURATION,
+        native_unit_of_measurement=UnitOfTime.MINUTES,
+        suggested_display_precision=0,
+        value_fn=_week_sum("duration_s", 1 / 60, previous=True),
+        week=True,
+    ),
+    TrainingSensorDescription(
+        key="last_week_active_energy",
+        translation_key="last_week_active_energy",
+        native_unit_of_measurement=KCAL,
+        suggested_display_precision=0,
+        value_fn=_week_sum("active_kcal", previous=True),
+        week=True,
+    ),
 )
 
 
@@ -212,6 +269,8 @@ class TrainingSensor(TrainingEntity, SensorEntity):
     """Wert aus dem Index der Trainings; aktualisiert bei neuen Trainings."""
 
     entity_description: TrainingSensorDescription
+    # Nur fuer die Karte (neu laden bei Aenderungen); nicht in den Verlauf
+    _unrecorded_attributes = frozenset({"revision"})
 
     def __init__(
         self, entry: TrainingConfigEntry, description: TrainingSensorDescription
@@ -262,4 +321,5 @@ class TrainingSensor(TrainingEntity, SensorEntity):
             "name": latest.get("name"),
             "location": latest.get("location"),
             "end": latest.get("end"),
+            "revision": self._store.revision,
         }

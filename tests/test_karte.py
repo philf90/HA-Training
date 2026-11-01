@@ -372,3 +372,34 @@ def test_tile_source_only_accepts_https_templates():
 def test_tile_layer_sends_origin_as_referer():
     assert 'const TILE_REFERRER = "strict-origin-when-cross-origin";' in CARD_TEXT
     assert "referrerPolicy: TILE_REFERRER," in CARD_TEXT
+
+
+WATCH = r"""
+(() => {
+  const card = new HaTrainingCard();
+  const calls = [];
+  card._config = {};
+  card.shadowRoot = { getElementById: () => null };
+  card._loadList = () => { calls.push("load"); };
+  const make = (rev, wid) => ({
+    entities: { "sensor.a": { platform: "other" }, "sensor.training_letztes_training": { platform: "ha_training" } },
+    states: { "sensor.training_letztes_training": { attributes: { workout_id: wid, revision: rev } } },
+  });
+  card.hass = make(1, "A");
+  card.hass = make(1, "A");          // keine Aenderung
+  card.hass = make(2, "A");          // dasselbe Training geaendert
+  card.hass = make(2, "B");          // neues Training
+  // Danach wird nicht mehr ueber alle Entitaeten gesucht
+  const before = card._watchEntity;
+  const h = make(3, "B");
+  Object.defineProperty(h, "entities", { get() { throw new Error("gesucht"); } });
+  card.hass = h;
+  return { calls: calls.length, entity: before };
+})()
+"""
+
+
+def test_card_reloads_on_revision_and_caches_entity():
+    got = js(WATCH)
+    # Erster Aufruf, Revision 2, neues Training, Revision 3
+    assert got == {"calls": 4, "entity": "sensor.training_letztes_training"}

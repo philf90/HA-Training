@@ -215,6 +215,9 @@ async def _async_options_updated(
 ) -> None:
     keep = entry.options.get(CONF_KEEP_DETAILS, DEFAULT_KEEP_DETAILS)
     await entry.runtime_data.store.async_set_keep_details(keep)
+    # Sensoren neu schreiben: die Karte sieht am Zaehler "revision", dass sie
+    # neu laden muss (Aufbewahrung oder Freigabe der Routen geaendert)
+    async_dispatcher_send(hass, f"{SIGNAL_UPDATED}_{entry.entry_id}", [])
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: TrainingConfigEntry) -> bool:

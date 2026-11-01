@@ -98,6 +98,18 @@
       },
       "week_active_energy": {
         "name": "Aktive Energie diese Woche"
+      },
+      "last_week_count": {
+        "name": "Trainings letzte Woche"
+      },
+      "last_week_distance": {
+        "name": "Distanz letzte Woche"
+      },
+      "last_week_duration": {
+        "name": "Trainingszeit letzte Woche"
+      },
+      "last_week_active_energy": {
+        "name": "Aktive Energie letzte Woche"
       }
     }
   },

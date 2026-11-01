@@ -44,6 +44,18 @@
       },
       "week_active_energy": {
         "default": "mdi:fire"
+      },
+      "last_week_count": {
+        "default": "mdi:counter"
+      },
+      "last_week_distance": {
+        "default": "mdi:map-marker-distance"
+      },
+      "last_week_duration": {
+        "default": "mdi:timer-sand"
+      },
+      "last_week_active_energy": {
+        "default": "mdi:fire"
       }
     }
   },
