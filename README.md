@@ -14,7 +14,7 @@ dieser Integration. Home Assistant speichert die Trainings privat, zeigt das
 letzte Training und die Woche als Sensoren und meldet neue Trainings als
 Ereignis. Die mitgelieferte Karte zeichnet die Route auf einer Karte, nach
 Tempo oder Puls eingefärbt, mit gekoppeltem Verlauf und Kilometer-Tabelle.
-Version 0.1.5.
+Version 0.1.6.
 
 ## Inhalt
 
@@ -26,6 +26,8 @@ Version 0.1.5.
 - [Adresse oder Token erneuern](#adresse-oder-token-erneuern)
 - [Entitäten](#entitäten)
 - [Karte „Training“](#karte-training)
+- [Training löschen](#training-löschen)
+- [GPX-Export](#gpx-export)
 - [Aktualisieren](#aktualisieren)
 - [Datenschutz und Speicher](#datenschutz-und-speicher)
 - [Grenzen](#grenzen)
@@ -106,7 +108,9 @@ nur Gesundheitswerte, keine Trainings).
 Die App schickt je nach Zeitraum dieselben Trainings mehrmals. Die Integration
 erkennt sie an der ID aus Apple Health; ein erneut geschicktes Training ersetzt
 das alte nur, wenn sich etwas geändert hat. Die Antwort des Webhooks nennt
-`trainings`, `neu`, `geaendert` und `verworfen`. Verworfen wird ein Training
+`trainings`, `neu`, `geaendert`, `verworfen` und `geloescht` (schon einmal
+gelöscht, deshalb nicht wieder angelegt, siehe
+[Training löschen](#training-löschen)). Verworfen wird ein Training
 ohne ID oder Beginn, mit einer ID aus anderen Zeichen als Buchstaben, Ziffern,
 `_` und `-` (oder länger als 128 Zeichen) oder mit unerwartetem Aufbau; die
 übrigen Trainings desselben Aufrufs werden trotzdem gespeichert.
@@ -257,6 +261,9 @@ color_by: speed      # oder heart_rate
   Zeitachse; Tippen in ein Diagramm oder auf die Route zeigt dieselbe Stelle
   überall.
 - Kilometer-Splits von Apple mit Zeit, min/km, km/h, Ø und max Puls.
+- Oben rechts „GPX“ (lädt die Route als Datei, siehe [GPX-Export](#gpx-export))
+  und für Administratoren „Löschen“ (siehe [Training löschen](#training-löschen)).
+  Auf schmalen Karten stehen beide in einer eigenen Zeile unter dem Titel.
 
 Farben, Rand und Schatten der Hülle aus dem Nachtblau-Stil (`--nachtblau-…`),
 ohne dieses Theme mit festen Werten. Im dunklen Modus wird die Karte von OpenStreetMap umgefärbt. Leaflet
@@ -264,11 +271,62 @@ ohne dieses Theme mit festen Werten. Im dunklen Modus wird die Karte von OpenStr
 Nach einem Update einmal die Seite neu laden, in der Companion App den
 Frontend-Cache zurücksetzen.
 
+## Training löschen
+
+Zum Beispiel ein Testtraining oder eine Fehlaufzeichnung. Löschen dürfen nur
+Administratoren von Home Assistant.
+
+**In der Karte:** das Training in der Auswahl im Kopf wählen, „Löschen“
+tippen. Der Knopf zeigt dann „Wirklich löschen?“; ein zweites Tippen innerhalb
+von 5 Sekunden löscht, sonst passiert nichts.
+
+**Als Aktion,** z. B. in einem Skript. Die ID steht im Attribut `workout_id`
+des Sensors „Letztes Training“ und des Ereignisses „Neues Training“:
+
+```yaml
+action: ha_training.delete_workout
+data:
+  workout_id: D6B529A9-0A4E-4E5A-818C-95C356458639
+```
+
+Was dabei passiert:
+
+- Zusammenfassung, Route und Verläufe werden aus `.storage/` gelöscht.
+- Die Sensoren rechnen sofort ohne das Training; „Letztes Training“ springt auf
+  das vorherige. Die Wochensummen haben `state_class: total`, das laut Home
+  Assistant steigen und fallen darf; die Langzeitstatistik verbucht das
+  Löschen als Rückgang.
+- Die ID kommt auf eine Sperrliste. Health Auto Export schickt je nach Zeitraum
+  dieselben Trainings erneut; ein gelöschtes Training legt die Integration
+  deshalb nicht wieder an und zählt es in der Antwort unter `geloescht`.
+- Nicht gelöscht werden: Einträge im Verlauf und im Logbuch (z. B. das
+  Ereignis „Neues Training“), schon geschickte Benachrichtigungen und Backups
+  von Home Assistant, die das Training schon enthalten.
+
+**Rückgängig:** `ha_training.undelete_workout` mit derselben `workout_id` nimmt
+die ID von der Sperrliste. Das Training kommt mit der nächsten Übertragung aus
+Health Auto Export zurück, die es enthält, z. B. per **Manual Upload** über den
+passenden Zeitraum.
+
+## GPX-Export
+
+„GPX“ in der Karte lädt die Route des gewählten Trainings als GPX-1.1-Datei,
+z. B. `training-2026-11-01-0945-outdoor-spaziergang.gpx`, für Strava, Komoot,
+Garmin Connect oder ein anderes Programm. Jeder Punkt hat Position, Höhe und
+Zeit (UTC); der Puls steht in der Garmin-Erweiterung `TrackPointExtension`
+(je Punkt der letzte Messwert, höchstens 120 s alt). Eine Lücke von mehr als
+10 Sekunden, z. B. eine Pause, beginnt ein neues Segment. Den Knopf gibt es nur,
+solange das Training seine Route noch hat (siehe Aufbewahrung unter
+„Konfigurieren“).
+
 ## Aktualisieren
 
 HACS zeigt neue Versionen als Update an. Nach dem Herunterladen Home Assistant
 neu starten, danach einmal die Seite neu laden, in der Companion App den
 Frontend-Cache zurücksetzen.
+
+**Update auf 0.1.6:** keine Migration. Neu sind Löschen und GPX-Export; die
+Antwort des Webhooks hat den zusätzlichen Schlüssel `geloescht`.
 
 **Update auf 0.1.5:** Der Eintrag wird beim ersten Start auf Version 1.2
 umgestellt: Er bekommt einen Token, „Token verlangen“ bleibt aus. Health Auto
@@ -288,7 +346,10 @@ geht ohne Backup, dann prüft der Webhook den Token aber nicht mehr.
   von den Details nur Anzahlen. Ins Log schreibt die Integration keines der
   beiden Geheimnisse.
 - Backups von Home Assistant enthalten `.storage/` und damit die Routen.
-- Entfernen der Integration löscht alle gespeicherten Trainings.
+- Entfernen der Integration löscht alle gespeicherten Trainings; einzelne
+  Trainings löscht [Training löschen](#training-löschen).
+- Eine GPX-Datei aus dem [GPX-Export](#gpx-export) enthält die Route und liegt
+  danach außerhalb von Home Assistant, dort, wo der Browser sie speichert.
 - Eine Stunde Gehen mit einem GPS-Punkt pro Sekunde braucht rund 170 KB.
 
 ## Grenzen
@@ -308,10 +369,17 @@ geht ohne Backup, dann prüft der Webhook den Token aber nicht mehr.
   Kachel „Distanz“ nennt beide Werte.
 - Sendet Health Auto Export im Hintergrund, entscheidet iOS über den
   Zeitpunkt.
+- Der GPX-Download ist nur in Chromium geprüft, nicht in Safari und nicht in
+  der Companion App auf dem iPhone.
 
 ## Teststand
 
-- **0.1.x:** 97 automatische Tests. 0.1.5: IDs nur aus Zeichen, die der
+- **0.1.x:** 113 automatische Tests. 0.1.6: Löschen über Aktion und
+  WebSocket (Sensoren rechnen neu, Detaildatei weg, nur für Administratoren),
+  Sperrliste gegen erneutes Senden und über einen Neustart, wieder annehmen,
+  unbekannte IDs, Löschen während Annahme und Ausdünnen (Lock), GPX mit
+  Punkten, Segmenten, Puls und geschütztem Namen, Karte mit Rückfrage und
+  Knopf nur für Administratoren. 0.1.5: IDs nur aus Zeichen, die der
   Dateiname unverändert übernimmt; Token im Header (fehlt, falsch,
   anderes Schema, Groß-/Kleinschreibung von `Bearer`, Ablehnung vor dem
   Parsen), Neueinrichtung mit Token-Pflicht, Migration von 0.1.4 ohne Pflicht,

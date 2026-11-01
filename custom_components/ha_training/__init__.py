@@ -39,6 +39,7 @@ from .const import (
     TITLE,
 )
 from .parser import parse_payload
+from .services import async_register_services
 from .storage import TrainingStore
 from .websocket import async_register_websocket
 
@@ -62,6 +63,7 @@ type TrainingConfigEntry = ConfigEntry[TrainingData]
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     await _async_register_card(hass)
     async_register_websocket(hass)
+    async_register_services(hass)
     return True
 
 
@@ -161,15 +163,16 @@ async def _async_handle_webhook(
         return web.json_response({"fehler": "kein JSON"}, status=400)
     parsed, rejected = parse_payload(payload)
     store = entry.runtime_data.store
-    new, updated = await store.async_add(parsed)
+    new, updated, skipped = await store.async_add(parsed)
     if new or updated:
         async_dispatcher_send(hass, f"{SIGNAL_UPDATED}_{entry.entry_id}", new)
     _LOGGER.debug(
-        "Webhook: %s Trainings, %s neu, %s geaendert, %s verworfen",
+        "Webhook: %s Trainings, %s neu, %s geaendert, %s verworfen, %s geloescht",
         len(parsed),
         len(new),
         updated,
         rejected,
+        skipped,
     )
     return web.json_response(
         {
@@ -177,6 +180,8 @@ async def _async_handle_webhook(
             "neu": len(new),
             "geaendert": updated,
             "verworfen": rejected,
+            # Schon einmal geloescht und deshalb nicht wieder angelegt
+            "geloescht": skipped,
         }
     )
 

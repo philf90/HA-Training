@@ -98,5 +98,38 @@
         "name": "Active energy this week"
       }
     }
+  },
+  "services": {
+    "delete_workout": {
+      "name": "Delete workout",
+      "description": "Deletes a workout with route and charts. Its ID is blocked, so Health Auto Export cannot add it again; undo with Accept deleted workout again.",
+      "fields": {
+        "workout_id": {
+          "name": "Workout ID",
+          "description": "Attribute workout_id of the sensor Latest workout or of the event New workout."
+        }
+      }
+    },
+    "undelete_workout": {
+      "name": "Accept deleted workout again",
+      "description": "Removes a deleted workout from the block list. It returns with the next upload from Health Auto Export that contains it.",
+      "fields": {
+        "workout_id": {
+          "name": "Workout ID",
+          "description": "ID of the deleted workout."
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "not_loaded": {
+      "message": "The Training integration is not set up or not loaded."
+    },
+    "workout_not_found": {
+      "message": "No workout with the ID {workout_id}."
+    },
+    "workout_not_deleted": {
+      "message": "The workout {workout_id} is not on the list of deleted workouts."
+    }
   }
 }

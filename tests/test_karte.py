@@ -29,11 +29,14 @@ const ctx = {
   customElements: { get: () => true, define() {} },
   window: {},
   console,
+  setTimeout,
+  clearTimeout,
 };
 vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(process.argv[1], "utf8"), ctx);
 const out = vm.runInContext(process.argv[2], ctx);
-process.stdout.write(JSON.stringify(out));
+// Ausdruecke duerfen ein Promise liefern (async Methoden der Karte)
+Promise.resolve(out).then((value) => process.stdout.write(JSON.stringify(value)));
 """
 
 
@@ -226,3 +229,63 @@ def test_workout_id_is_escaped_in_selector():
     )
     assert "<img" not in html
     assert 'value="x&quot;&gt;&lt;img src=x onerror=&quot;alert(1)&quot;&gt;"' in html
+
+
+CARD_WITH = r"""
+(() => {
+  const root = { innerHTML: "", querySelector: () => null, querySelectorAll: () => [] };
+  const calls = [];
+  const card = new HaTrainingCard();
+  card.shadowRoot = { getElementById: (id) => (id === "inhalt" ? root : null) };
+  card._config = {};
+  card._hass = {
+    language: "de", locale: { language: "de" }, config: { time_zone: "Europe/Berlin" },
+    user: { is_admin: ADMIN },
+    callWS: async (req) => { calls.push(req); return { workouts: [] }; },
+  };
+  card._workouts = [{ id: "A-1", name: "Walk", start: "2026-10-30T15:00:00+01:00" }];
+  card._summary = card._workouts[0];
+  card._current = "A-1";
+  card._points = [];
+  card._detail = null;
+  card._render();
+  return { card, root, calls };
+})()
+"""
+
+
+@pytest.mark.parametrize("admin", [True, False])
+def test_delete_button_only_for_admins(admin):
+    html = js(CARD_WITH.replace("ADMIN", str(admin).lower()) + ".root.innerHTML")
+    assert ('data-a="del"' in html) is admin
+    # Ohne Route kein GPX-Knopf
+    assert 'data-a="gpx"' not in html
+
+
+def test_delete_needs_second_click():
+    got = js(
+        "(async () => { const { card, calls } = "
+        + CARD_WITH.replace("ADMIN", "true")
+        + "; const first = await card._deleteClick();"
+        " const before = calls.length;"
+        " const second = await card._deleteClick();"
+        " return { first, before, second, types: calls.map((c) => c.type),"
+        " ids: calls.map((c) => c.workout_id) }; })()"
+    )
+    assert got["first"] == "confirm"
+    assert got["before"] == 0
+    assert got["second"] == "deleted"
+    assert got["types"][0] == "ha_training/delete_workout"
+    assert got["ids"][0] == "A-1"
+    # Danach laedt die Karte die Liste neu
+    assert "ha_training/workouts" in got["types"]
+
+
+def test_delete_refused_without_admin():
+    got = js(
+        "(async () => { const { card, calls } = "
+        + CARD_WITH.replace("ADMIN", "false")
+        + "; const r1 = await card._deleteClick(); const r2 = await card._deleteClick();"
+        " return { r1, r2, n: calls.length }; })()"
+    )
+    assert got == {"r1": "denied", "r2": "denied", "n": 0}

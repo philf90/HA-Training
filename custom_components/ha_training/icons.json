@@ -46,5 +46,13 @@
         "default": "mdi:fire"
       }
     }
+  },
+  "services": {
+    "delete_workout": {
+      "service": "mdi:delete-outline"
+    },
+    "undelete_workout": {
+      "service": "mdi:restore"
+    }
   }
 }

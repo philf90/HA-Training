@@ -98,5 +98,38 @@
         "name": "Aktive Energie diese Woche"
       }
     }
+  },
+  "services": {
+    "delete_workout": {
+      "name": "Training löschen",
+      "description": "Löscht ein Training samt Route und Verläufen. Seine ID wird gesperrt, damit Health Auto Export es nicht wieder anlegt; rückgängig mit „Gelöschtes Training wieder annehmen“.",
+      "fields": {
+        "workout_id": {
+          "name": "Trainings-ID",
+          "description": "Attribut workout_id des Sensors „Letztes Training“ oder des Ereignisses „Neues Training“."
+        }
+      }
+    },
+    "undelete_workout": {
+      "name": "Gelöschtes Training wieder annehmen",
+      "description": "Nimmt ein gelöschtes Training von der Sperrliste. Es kommt mit der nächsten Übertragung aus Health Auto Export zurück, die es enthält.",
+      "fields": {
+        "workout_id": {
+          "name": "Trainings-ID",
+          "description": "ID des gelöschten Trainings."
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "not_loaded": {
+      "message": "Die Integration Training ist nicht eingerichtet oder nicht geladen."
+    },
+    "workout_not_found": {
+      "message": "Kein Training mit der ID {workout_id}."
+    },
+    "workout_not_deleted": {
+      "message": "Das Training {workout_id} steht nicht auf der Liste der gelöschten Trainings."
+    }
   }
 }
