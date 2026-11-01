@@ -198,3 +198,31 @@ def test_map_stays_below_the_app_bars():
 
 def test_marker_parts_do_not_wrap_inside():
     assert ".marke .teil { white-space: nowrap; }" in CARD_TEXT
+
+
+def test_workout_id_is_escaped_in_selector():
+    # Auch wenn eine unsichere ID im Speicher steht (z. B. aus 0.1.3), darf
+    # sie in der Auswahl kein HTML erzeugen
+    html = js(
+        r"""
+(() => {
+  const root = { innerHTML: "", querySelector: () => null, querySelectorAll: () => [] };
+  const card = new HaTrainingCard();
+  card.shadowRoot = { getElementById: (id) => (id === "inhalt" ? root : null) };
+  card._config = {};
+  card._hass = { language: "de", locale: { language: "de" }, config: { time_zone: "Europe/Berlin" } };
+  card._workouts = [
+    { id: "A-1", name: "Walk", start: "2026-10-30T15:00:00+01:00" },
+    { id: 'x"><img src=x onerror="alert(1)">', name: "Walk", start: "2026-10-29T15:00:00+01:00" },
+  ];
+  card._summary = card._workouts[0];
+  card._current = "A-1";
+  card._points = [];
+  card._detail = null;
+  card._render();
+  return root.innerHTML;
+})()
+"""
+    )
+    assert "<img" not in html
+    assert 'value="x&quot;&gt;&lt;img src=x onerror=&quot;alert(1)&quot;&gt;"' in html

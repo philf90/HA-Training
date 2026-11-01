@@ -14,7 +14,7 @@ dieser Integration. Home Assistant speichert die Trainings privat, zeigt das
 letzte Training und die Woche als Sensoren und meldet neue Trainings als
 Ereignis. Die mitgelieferte Karte zeichnet die Route auf einer Karte, nach
 Tempo oder Puls eingefärbt, mit gekoppeltem Verlauf und Kilometer-Tabelle.
-Version 0.1.3.
+Version 0.1.4.
 
 ## Inhalt
 
@@ -89,7 +89,10 @@ Assistant“: dieser Typ sendet laut Doku nur Gesundheitswerte, keine Trainings)
 Die App schickt je nach Zeitraum dieselben Trainings mehrmals. Die Integration
 erkennt sie an der ID aus Apple Health; ein erneut geschicktes Training ersetzt
 das alte nur, wenn sich etwas geändert hat. Die Antwort des Webhooks nennt
-`trainings`, `neu`, `geaendert` und `verworfen`.
+`trainings`, `neu`, `geaendert` und `verworfen`. Verworfen wird ein Training
+ohne ID oder Beginn, mit einer ID aus anderen Zeichen als Buchstaben, Ziffern
+und `_ . : -` (oder länger als 128 Zeichen) oder mit unerwartetem Aufbau; die
+übrigen Trainings desselben Aufrufs werden trotzdem gespeichert.
 
 ## Entitäten
 
@@ -182,8 +185,8 @@ HACS zeigt neue Versionen als Update an. Nach dem Herunterladen Home Assistant
 neu starten, danach einmal die Seite neu laden, in der Companion App den
 Frontend-Cache zurücksetzen.
 
-**Update auf 0.1.3:** keine Migration. Nur die Karte ändert sich (siehe
-Release-Hinweise).
+**Update auf 0.1.4:** keine Migration. Robustere Annahme am Webhook und eine
+Sicherheitskorrektur in der Karte (siehe Release-Hinweise).
 
 ## Datenschutz und Speicher
 
@@ -219,7 +222,12 @@ Release-Hinweise).
 
 ## Teststand
 
-- **0.1.x:** 62 automatische Tests. 0.1.3: Glättung der Routenfarbe
+- **0.1.x:** 76 automatische Tests. 0.1.4: ID mit unsicheren Zeichen oder
+  zu lang wird verworfen, in der Karte escapt; unerwartete Feldtypen und
+  übergroße Zahlen verwerfen weder das Training noch den Aufruf; ein
+  unerwarteter Fehler verwirft nur sein Training; erneut geschickte Trainings
+  hinter der Aufbewahrung schreiben keine Dateien, innerhalb holen sie fehlende
+  Details zurück. 0.1.3: Glättung der Routenfarbe
   (kurzer Abschnitt bleibt im Diagramm, nicht in der Farbe; Fenster nach
   Zeit, nicht nach Index). 0.1.2: Stufen aus dem Training
   (Viertel, Fünftel, streng steigend, Rückfall bei wenigen Werten),

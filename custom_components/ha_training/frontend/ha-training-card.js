@@ -29,7 +29,7 @@
  * damit sie zu den Splits passen.
  */
 
-const VERSION = "0.1.3";
+const VERSION = "0.1.4";
 const LEAFLET = "/ha_training/leaflet";
 
 const TEXT = {
@@ -409,7 +409,7 @@ class HaTrainingCard extends HTMLElement {
     const options = (this._workouts || []).map((w) => {
       const d = new Date(Date.parse(w.start)).toLocaleDateString(this._locale(), { day: "2-digit", month: "2-digit", timeZone: this._hass.config?.time_zone });
       const km = w.distance_km != null ? ` · ${this._num(w.distance_km, 2)} km` : "";
-      return `<option value="${w.id}" ${w.id === this._current ? "selected" : ""}>${d} · ${this._escape(w.name)}${km}</option>`;
+      return `<option value="${this._escape(w.id)}" ${w.id === this._current ? "selected" : ""}>${d} · ${this._escape(w.name)}${km}</option>`;
     }).join("");
     const pts = this._points;
     const gps = pts.length ? pts[pts.length - 1].d / 1000 : null;

@@ -69,18 +69,26 @@ class TrainingStore:
         updated = 0
         for summary, detail in parsed:
             old = self.get(summary["id"])
-            summary = {**summary, "has_detail": True}
             if old is None:
+                summary = {**summary, "has_detail": True}
                 self.workouts.append(summary)
                 new.append(summary)
-            elif {k: v for k, v in old.items() if k != "has_detail"} != {
-                k: v for k, v in summary.items() if k != "has_detail"
-            } or not old.get("has_detail"):
-                self.workouts[self.workouts.index(old)] = summary
-                updated += 1
-            else:
+                await self._detail_store(summary["id"]).async_save(detail)
                 continue
-            await self._detail_store(summary["id"]).async_save(detail)
+            position = self.workouts.index(old)
+            # Liegt das Training hinter der Aufbewahrung, wuerden seine Details
+            # gleich wieder geloescht. Unveraendert: ueberspringen; geaendert:
+            # nur die Zusammenfassung ersetzen. Innerhalb der Aufbewahrung holt
+            # ein erneut geschicktes Training fehlende Details zurueck.
+            keep = position < self.keep_details or bool(old.get("has_detail"))
+            unchanged = {k: v for k, v in old.items() if k != "has_detail"} == summary
+            if unchanged and (old.get("has_detail") or not keep):
+                continue
+            summary = {**summary, "has_detail": keep}
+            self.workouts[position] = summary
+            updated += 1
+            if keep:
+                await self._detail_store(summary["id"]).async_save(detail)
         if new or updated:
             self.workouts.sort(key=lambda w: w.get("start") or "", reverse=True)
             await self._async_prune()

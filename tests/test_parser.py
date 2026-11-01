@@ -129,3 +129,61 @@ def test_bad_points_are_skipped():
     )
     assert len(rows) == 1
     assert rows[0][4] is None
+
+
+@pytest.mark.parametrize(
+    "workout_id",
+    ['x"><img src=x onerror="alert(1)">', "a/b", "a b", "<script>", "X" * 129],
+)
+def test_unsafe_workout_id_is_rejected(workout_id):
+    # Die ID landet in der Auswahl der Karte und im Dateinamen der Details
+    with pytest.raises(WorkoutError):
+        parse_workout(workout(workout_id))
+
+
+def test_uuid_workout_id_is_accepted():
+    summary, _ = parse_workout(workout("8F3A1C2E-1B2C-4D5E-9F00-0123456789AB"))
+    assert summary["id"] == "8F3A1C2E-1B2C-4D5E-9F00-0123456789AB"
+
+
+def test_unexpected_field_types_keep_workout():
+    raw = workout()
+    raw["activities"] = 5
+    raw["distance"] = {"qty": 10**400, "units": "km"}
+    raw["splits"] = [
+        {"targetDistance": "1 km"},
+        {"targetDistance": {"units": "km", "qty": 1}, "items": 5},
+    ]
+    summary, detail = parse_workout(raw)
+    assert summary["distance_km"] is None
+    assert summary["elapsed_s"] == 1800
+    assert detail["splits"] == []
+    raw["splits"] = [
+        {
+            "targetDistance": {"units": "km", "qty": 1},
+            "items": [{"start": raw["start"], "end": raw["end"], "metrics": []}],
+        }
+    ]
+    _, detail = parse_workout(raw)
+    assert len(detail["splits"]) == 1
+    assert detail["splits"][0]["distance_m"] is None
+
+
+def test_unexpected_error_rejects_only_that_workout(monkeypatch):
+    from custom_components.ha_training import parser
+
+    real = parser.parse_workout
+    calls = iter([TypeError("kaputt"), None])
+
+    def flaky(raw):
+        error = next(calls)
+        if error:
+            raise error
+        return real(raw)
+
+    monkeypatch.setattr(parser, "parse_workout", flaky)
+    parsed, rejected = parser.parse_payload(
+        {"data": {"workouts": [workout("A-1"), workout("A-2")]}}
+    )
+    assert rejected == 1
+    assert [summary["id"] for summary, _ in parsed] == ["A-2"]
