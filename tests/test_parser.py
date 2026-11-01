@@ -133,7 +133,15 @@ def test_bad_points_are_skipped():
 
 @pytest.mark.parametrize(
     "workout_id",
-    ['x"><img src=x onerror="alert(1)">', "a/b", "a b", "<script>", "X" * 129],
+    [
+        'x"><img src=x onerror="alert(1)">',
+        "a/b",
+        "a b",
+        "a.b",
+        "a:b",
+        "<script>",
+        "X" * 129,
+    ],
 )
 def test_unsafe_workout_id_is_rejected(workout_id):
     # Die ID landet in der Auswahl der Karte und im Dateinamen der Details
@@ -187,3 +195,15 @@ def test_unexpected_error_rejects_only_that_workout(monkeypatch):
     )
     assert rejected == 1
     assert [summary["id"] for summary, _ in parsed] == ["A-2"]
+
+
+@pytest.mark.parametrize(
+    "workout_id", ["a_b", "A-1", "8F3A1C2E-1B2C-4D5E-9F00-0123456789AB"]
+)
+def test_detail_file_name_is_the_workout_id(workout_id):
+    # Jede erlaubte ID ergibt einen eigenen Dateinamen: keine zwei Trainings
+    # teilen sich eine Detaildatei
+    from custom_components.ha_training.storage import _detail_key
+
+    summary, _ = parse_workout(workout(workout_id))
+    assert _detail_key("e", summary["id"]) == f"ha_training.detail.e.{workout_id}"

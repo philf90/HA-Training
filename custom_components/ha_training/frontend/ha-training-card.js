@@ -29,7 +29,7 @@
  * damit sie zu den Splits passen.
  */
 
-const VERSION = "0.1.4";
+const VERSION = "0.1.5";
 const LEAFLET = "/ha_training/leaflet";
 
 const TEXT = {

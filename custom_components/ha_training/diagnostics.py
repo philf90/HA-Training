@@ -1,4 +1,4 @@
-"""Diagnose ohne Webhook-ID und ohne Koordinaten.
+"""Diagnose ohne Webhook-ID, ohne Token und ohne Koordinaten.
 
 Die Route zeigt Wohnort und Wege; sie bleibt deshalb ganz draussen. Von den
 Details stehen nur Anzahlen in der Diagnose.
@@ -12,9 +12,9 @@ from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.core import HomeAssistant
 
 from . import TrainingConfigEntry
-from .const import CONF_WEBHOOK_ID
+from .const import CONF_TOKEN, CONF_WEBHOOK_ID
 
-TO_REDACT = {CONF_WEBHOOK_ID}
+TO_REDACT = {CONF_TOKEN, CONF_WEBHOOK_ID}
 LATEST_COUNT = 5
 
 

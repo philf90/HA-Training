@@ -14,7 +14,7 @@ dieser Integration. Home Assistant speichert die Trainings privat, zeigt das
 letzte Training und die Woche als Sensoren und meldet neue Trainings als
 Ereignis. Die mitgelieferte Karte zeichnet die Route auf einer Karte, nach
 Tempo oder Puls eingefärbt, mit gekoppeltem Verlauf und Kilometer-Tabelle.
-Version 0.1.4.
+Version 0.1.5.
 
 ## Inhalt
 
@@ -22,6 +22,8 @@ Version 0.1.4.
 - [Installation](#installation)
 - [Einrichtung](#einrichtung)
 - [Health Auto Export einstellen](#health-auto-export-einstellen)
+- [Webhook mit Token absichern](#webhook-mit-token-absichern)
+- [Adresse oder Token erneuern](#adresse-oder-token-erneuern)
 - [Entitäten](#entitäten)
 - [Karte „Training“](#karte-training)
 - [Aktualisieren](#aktualisieren)
@@ -55,29 +57,44 @@ starten.
 ## Einrichtung
 
 Einstellungen → Geräte & Dienste → Integration hinzufügen → „Training“. Die
-Integration legt eine geheime Webhook-Adresse an und zeigt sie nach dem
-Einrichten an, später jederzeit unter „Konfigurieren“:
+Integration legt zwei Geheimnisse an und zeigt beide nach dem Einrichten an,
+später jederzeit unter Einstellungen → Geräte & Dienste → Training →
+„Konfigurieren“:
 
-```
-https://<deine-adresse>/api/webhook/<geheime-id>
-```
+- die **Webhook-Adresse**
 
-Wer die Adresse kennt, kann Trainings anlegen. Sie gehört deshalb nur in
-Health Auto Export. Ist in Home Assistant keine Adresse eingestellt, zeigt der
-Dialog nur den Pfad `/api/webhook/<geheime-id>`.
+  ```
+  https://<deine-adresse>/api/webhook/<geheime-id>
+  ```
+
+- den **Wert für den HTTP-Header** `Authorization`: das Wort `Bearer`, ein
+  Leerzeichen und der Token (43 Zeichen aus Buchstaben, Ziffern, `-` und `_`)
+
+  ```
+  Bearer <token>
+  ```
+
+Beides erzeugt die Integration selbst (je 256 Bit Zufall); man muss und kann
+keinen eigenen Token ausdenken. Eine neu eingerichtete Integration nimmt
+Aufrufe nur mit diesem Header an. Beides gehört nur in Health Auto Export. Ist
+in Home Assistant keine Adresse eingestellt, zeigt der Dialog nur den Pfad
+`/api/webhook/<geheime-id>`.
 
 Unter „Konfigurieren“ steht außerdem, wie viele Trainings ihre Route und
-Verläufe behalten (Standard 200, 10–2000). Ältere Trainings behalten ihre
-Zusammenfassung.
+Verläufe behalten (Standard 200, 10–2000; ältere Trainings behalten ihre
+Zusammenfassung), und der Schalter „Token verlangen“.
 
 ## Health Auto Export einstellen
 
-In der App: Automations → neue Automation → Typ **REST API** (nicht „Home
-Assistant“: dieser Typ sendet laut Doku nur Gesundheitswerte, keine Trainings).
+In der App auf dem iPhone **Export → Automated** öffnen (iPad: **Automations**
+in der Seitenleiste), **New Automation** wählen und als **Automation Type**
+**REST API** einstellen (nicht „Home Assistant“: dieser Typ sendet laut Doku
+nur Gesundheitswerte, keine Trainings).
 
 | Einstellung | Wert |
 |---|---|
 | URL | die Webhook-Adresse aus der Einrichtung |
+| HTTP Headers | Schlüssel `Authorization`, Wert `Bearer <token>` aus der Einrichtung (siehe [unten](#webhook-mit-token-absichern)) |
 | Methode | POST |
 | Datentyp | Workouts |
 | Exportformat | JSON |
@@ -90,9 +107,77 @@ Die App schickt je nach Zeitraum dieselben Trainings mehrmals. Die Integration
 erkennt sie an der ID aus Apple Health; ein erneut geschicktes Training ersetzt
 das alte nur, wenn sich etwas geändert hat. Die Antwort des Webhooks nennt
 `trainings`, `neu`, `geaendert` und `verworfen`. Verworfen wird ein Training
-ohne ID oder Beginn, mit einer ID aus anderen Zeichen als Buchstaben, Ziffern
-und `_ . : -` (oder länger als 128 Zeichen) oder mit unerwartetem Aufbau; die
+ohne ID oder Beginn, mit einer ID aus anderen Zeichen als Buchstaben, Ziffern,
+`_` und `-` (oder länger als 128 Zeichen) oder mit unerwartetem Aufbau; die
 übrigen Trainings desselben Aufrufs werden trotzdem gespeichert.
+
+Zum Schluss **Enabled** einschalten und mit **Update** speichern. Zum Testen
+in der Automation unter **Export Existing Data** → **Manual Upload** einen
+Zeitraum wählen und **Begin Export**; das Ergebnis steht unter **View Activity
+Logs**.
+
+## Webhook mit Token absichern
+
+Die Webhook-Adresse steht im Pfad der URL und damit z. B. in den
+Zugriffsprotokollen eines Reverse-Proxys. Der Token steht in einem HTTP-Header,
+den solche Protokolle üblicherweise nicht aufzeichnen. Mit „Token verlangen“
+lehnt der Webhook jeden Aufruf ohne den richtigen Header mit HTTP 401 ab, noch
+bevor er den Inhalt liest.
+
+**Neu eingerichtet (ab 0.1.5):** Der Token ist von Anfang an Pflicht. Den Header
+wie in der Tabelle oben in Health Auto Export eintragen, sonst kommen keine
+Trainings an.
+
+**Aktualisiert von 0.1.4 oder älter:** Beim ersten Start legt die Integration
+einen Token an, „Token verlangen“ bleibt aber aus, damit die App weiter
+liefert. Zum Einschalten genau in dieser Reihenfolge:
+
+1. **Token holen.** In Home Assistant: Einstellungen → Geräte & Dienste →
+   Training → „Konfigurieren“. Der Dialog zeigt den Header-Wert
+   `Bearer <token>`. Den Dialog mit „Absenden“ oder dem Kreuz schließen;
+   dabei ändert sich nichts.
+2. **In Health Auto Export eintragen.** Auf dem iPhone **Export → Automated**
+   (iPad: **Automations**), die REST-API-Automation für Training öffnen und
+   unter **HTTP Headers** einen Header anlegen:
+   - Schlüssel: `Authorization`
+   - Wert: `Bearer <token>`, also das Wort `Bearer`, ein Leerzeichen und die
+     43 Zeichen des Tokens, ohne Anführungszeichen und ohne Leerzeichen am Ende
+
+   Mit **Update** speichern.
+3. **Testen.** In der Automation unter **Export Existing Data** →
+   **Manual Upload** einen kurzen Zeitraum wählen und **Begin Export**. Unter
+   **View Activity Logs** darf kein Fehler stehen. Die App schickt den Header
+   schon mit, auch solange Home Assistant ihn noch nicht verlangt.
+4. **Pflicht einschalten.** In Home Assistant wieder „Konfigurieren“, „Token
+   verlangen“ einschalten, „Absenden“. Das wirkt sofort, ohne Neustart.
+5. **Noch einmal testen** wie in Schritt 3.
+
+Schlägt der Test nach Schritt 4 fehl, zeigt **View Activity Logs** in der App
+einen Fehler beim Hochladen, und das Log von Home Assistant meldet „Webhook:
+Aufruf ohne gueltigen Token abgelehnt“. Dann den Header-Wert in der App
+prüfen (Schlüssel genau `Authorization`, Wert beginnt mit `Bearer `) oder
+„Token verlangen“ wieder ausschalten.
+
+Home Assistant wertet den Header `Authorization` auch selbst aus. Ein Token der
+Integration ist dort unbekannt; der Aufruf gilt dann nur als „nicht
+angemeldet“, was der Webhook nicht braucht. Fehlversuche zählen nicht als
+Anmeldeversuche und führen nicht zur Sperre der IP-Adresse.
+
+Laut Doku von Health Auto Export werden Request-Header in der iCloud-Sicherung
+der Automationen verschlüsselt („Request headers and credentials you typed
+into an automation … are encrypted in iCloud Drive backup files“). Für die URL
+sagt die Doku das nicht.
+
+## Adresse oder Token erneuern
+
+Wenn Adresse oder Token bekannt geworden sein könnten: Einstellungen → Geräte &
+Dienste → Training → Menü (⋮) → „Neu konfigurieren“. Dort „Neue
+Webhook-Adresse“, „Neuer Token“ oder beides einschalten und „Absenden“. Der
+Dialog zeigt danach die neuen Werte, „Konfigurieren“ ebenfalls. Die alten
+gelten sofort nicht mehr; die gespeicherten Trainings bleiben erhalten. Die
+neuen Werte danach in der Automation von Health Auto Export eintragen (URL
+bzw. Header-Wert) und wie oben testen. Bis dahin kann die App nicht liefern;
+was sie in der Zeit nicht schicken konnte, holt **Manual Upload** nach.
 
 ## Entitäten
 
@@ -185,8 +270,11 @@ HACS zeigt neue Versionen als Update an. Nach dem Herunterladen Home Assistant
 neu starten, danach einmal die Seite neu laden, in der Companion App den
 Frontend-Cache zurücksetzen.
 
-**Update auf 0.1.4:** keine Migration. Robustere Annahme am Webhook und eine
-Sicherheitskorrektur in der Karte (siehe Release-Hinweise).
+**Update auf 0.1.5:** Der Eintrag wird beim ersten Start auf Version 1.2
+umgestellt: Er bekommt einen Token, „Token verlangen“ bleibt aus. Health Auto
+Export liefert also weiter wie bisher; das Einschalten beschreibt
+[Webhook mit Token absichern](#webhook-mit-token-absichern). Zurück auf 0.1.4
+geht ohne Backup, dann prüft der Webhook den Token aber nicht mehr.
 
 ## Datenschutz und Speicher
 
@@ -196,8 +284,9 @@ Sicherheitskorrektur in der Karte (siehe Release-Hinweise).
 - Route und Verläufe verlassen Home Assistant nur über die WebSocket-API
   (`ha_training/workouts`, `ha_training/workout`), also nur für angemeldete
   Nutzer.
-- Die Diagnose enthält weder die Webhook-ID noch Koordinaten, von den Details
-  nur Anzahlen.
+- Die Diagnose enthält weder die Webhook-ID noch den Token noch Koordinaten,
+  von den Details nur Anzahlen. Ins Log schreibt die Integration keines der
+  beiden Geheimnisse.
 - Backups von Home Assistant enthalten `.storage/` und damit die Routen.
 - Entfernen der Integration löscht alle gespeicherten Trainings.
 - Eine Stunde Gehen mit einem GPS-Punkt pro Sekunde braucht rund 170 KB.
@@ -222,7 +311,14 @@ Sicherheitskorrektur in der Karte (siehe Release-Hinweise).
 
 ## Teststand
 
-- **0.1.x:** 76 automatische Tests. 0.1.4: ID mit unsicheren Zeichen oder
+- **0.1.x:** 97 automatische Tests. 0.1.5: IDs nur aus Zeichen, die der
+  Dateiname unverändert übernimmt; Token im Header (fehlt, falsch,
+  anderes Schema, Groß-/Kleinschreibung von `Bearer`, Ablehnung vor dem
+  Parsen), Neueinrichtung mit Token-Pflicht, Migration von 0.1.4 ohne Pflicht,
+  Schalter wirkt ohne Neuladen, „Neu konfigurieren“ für Adresse und Token
+  (alte Adresse verarbeitet nichts mehr, Trainings bleiben, nichts gewählt),
+  Token nicht in Diagnose und Log, falscher Token führt nicht zur IP-Sperre.
+  0.1.4: ID mit unsicheren Zeichen oder
   zu lang wird verworfen, in der Karte escapt; unerwartete Feldtypen und
   übergroße Zahlen verwerfen weder das Training noch den Aufruf; ein
   unerwarteter Fehler verwirft nur sein Training; erneut geschickte Trainings

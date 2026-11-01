@@ -32,10 +32,11 @@ M_PER_FOOT = 0.3048
 ROUTE_FIELDS = ("t", "lat", "lon", "alt", "speed", "hacc")
 HEART_RATE_FIELDS = ("t", "min", "avg", "max")
 
-# Apple Health vergibt UUIDs. Erlaubt sind nur Zeichen, die in HTML, in
-# Dateinamen und in der Karte nichts anrichten koennen; alles andere verwirft
-# der Parser, statt es zu speichern (die ID landet in der Auswahl der Karte).
-_WORKOUT_ID = re.compile(r"[A-Za-z0-9_.:-]{1,128}")
+# Apple Health vergibt UUIDs. Erlaubt sind nur Zeichen, die in HTML und in der
+# Karte nichts anrichten koennen und die der Dateiname der Details unveraendert
+# uebernimmt (storage._SAFE), damit zwei IDs nie dieselbe Datei treffen. Alles
+# andere verwirft der Parser, statt es zu speichern.
+_WORKOUT_ID = re.compile(r"[A-Za-z0-9_-]{1,128}")
 
 
 class WorkoutError(ValueError):
