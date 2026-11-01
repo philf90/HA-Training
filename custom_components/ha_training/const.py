@@ -14,6 +14,10 @@ CONF_TOKEN = "token"
 # Option: Aufrufe ohne gueltigen Token ablehnen. Neu eingerichtete Eintraege
 # verlangen ihn, nach dem Update von 0.1.4 ist er aus, bis man ihn einschaltet.
 CONF_REQUIRE_TOKEN = "require_token"
+# Option: Konten ohne Administratorrechte, die Route, Verlaeufe und GPX sehen
+# duerfen. Administratoren sehen sie immer, alle anderen nur die
+# Zusammenfassung (dieselben Werte wie die Sensoren).
+CONF_ROUTE_USERS = "route_users"
 # Felder des Schritts "Neu konfigurieren"
 CONF_NEW_WEBHOOK = "new_webhook"
 CONF_NEW_TOKEN = "new_token"

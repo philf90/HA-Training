@@ -84,7 +84,9 @@ in Home Assistant keine Adresse eingestellt, zeigt der Dialog nur den Pfad
 
 Unter „Konfigurieren“ steht außerdem, wie viele Trainings ihre Route und
 Verläufe behalten (Standard 200, 10–2000; ältere Trainings behalten ihre
-Zusammenfassung), und der Schalter „Token verlangen“.
+Zusammenfassung), der Schalter „Token verlangen“ und, falls es Konten ohne
+Administratorrechte gibt, die Auswahl „Weitere Konten, die Routen sehen
+dürfen“ (siehe [Datenschutz und Speicher](#datenschutz-und-speicher)).
 
 ## Health Auto Export einstellen
 
@@ -327,7 +329,9 @@ Frontend-Cache zurücksetzen.
 
 **Update auf 0.1.7:** keine Migration. Die Annahme am Webhook blockiert
 Home Assistant nicht mehr während großer Abgleiche (siehe Release-Hinweise);
-neu ist die Obergrenze von 1000 Trainings je Aufruf.
+neu ist die Obergrenze von 1000 Trainings je Aufruf. **Konten ohne
+Administratorrechte sehen ab jetzt keine Routen mehr**, bis sie unter
+„Konfigurieren“ freigegeben werden.
 
 **Update auf 0.1.6:** keine Migration. Neu sind Löschen und GPX-Export; die
 Antwort des Webhooks hat den zusätzlichen Schlüssel `geloescht`.
@@ -344,8 +348,12 @@ geht ohne Backup, dann prüft der Webhook den Token aber nicht mehr.
   unter `.storage/` (Dateien `ha_training.*`), nicht unter `www/`: Was unter
   `/local/` liegt, liefert Home Assistant ohne Anmeldung aus.
 - Route und Verläufe verlassen Home Assistant nur über die WebSocket-API
-  (`ha_training/workouts`, `ha_training/workout`), also nur für angemeldete
-  Nutzer.
+  (`ha_training/workout`, `ha_training/gpx`) und nur für Administratoren und
+  die Konten, die unter „Konfigurieren“ bei „Weitere Konten, die Routen sehen
+  dürfen“ ausgewählt sind. Alle anderen angemeldeten Konten sehen in der Karte
+  nur die Zusammenfassung (Distanz, Zeit, Puls, Energie) mit dem Hinweis, dass
+  die Route nicht freigegeben ist. Dieselben Werte zeigen auch die Sensoren;
+  Home Assistant kennt keine Rechte je Entität.
 - Die Diagnose enthält weder die Webhook-ID noch den Token noch Koordinaten,
   von den Details nur Anzahlen. Ins Log schreibt die Integration keines der
   beiden Geheimnisse.
@@ -383,7 +391,9 @@ geht ohne Backup, dann prüft der Webhook den Token aber nicht mehr.
 
 ## Teststand
 
-- **0.1.x:** 123 automatische Tests. 0.1.7: Dekodieren und Parsen außerhalb
+- **0.1.x:** 129 automatische Tests. 0.1.7: Route, Verläufe und GPX nur für
+  Administratoren und freigegebene Konten (Auswahl ohne Administratoren,
+  veraltete Konten fallen heraus, Hinweis in der Karte); Dekodieren und Parsen außerhalb
   des Event-Loops, Obergrenze je Aufruf (413, genau an der Grenze 200), leerer
   Inhalt, Detaildateien nur innerhalb der Aufbewahrung, dieselbe ID zweimal in
   einem Aufruf, Speichern ohne Serialisieren im Event-Loop, Wochensummen mit

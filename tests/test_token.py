@@ -116,7 +116,11 @@ async def test_option_switches_token_without_reload(
         result["flow_id"], {CONF_KEEP_DETAILS: 200, CONF_REQUIRE_TOKEN: True}
     )
     await hass.async_block_till_done()
-    assert entry.options == {CONF_KEEP_DETAILS: 200, CONF_REQUIRE_TOKEN: True}
+    assert entry.options == {
+        CONF_KEEP_DETAILS: 200,
+        CONF_REQUIRE_TOKEN: True,
+        "route_users": [],
+    }
     assert (await send(hass_client_no_auth, None)).status == 401
     assert (await send(hass_client_no_auth, header)).status == 200
 

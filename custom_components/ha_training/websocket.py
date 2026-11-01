@@ -2,7 +2,9 @@
 
 Nur angemeldete Nutzer erreichen sie (Anmeldung der WebSocket-Verbindung von
 Home Assistant). Die Route verlaesst Home Assistant nur auf diesem Weg. Loeschen
-nur fuer Administratoren.
+nur fuer Administratoren. Route, Verlaeufe und GPX sehen Administratoren und die
+Konten, die unter "Konfigurieren" freigegeben sind; alle anderen bekommen nur
+die Zusammenfassung (dieselben Werte wie die Sensoren).
 """
 
 from __future__ import annotations
@@ -14,7 +16,7 @@ from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
 
-from .const import DOMAIN
+from .const import CONF_ROUTE_USERS, DOMAIN
 from .gpx import build_gpx, filename
 
 if TYPE_CHECKING:
@@ -30,6 +32,15 @@ def _entry(hass: HomeAssistant, entry_id: str | None) -> TrainingConfigEntry | N
         if entry_id is None or entry.entry_id == entry_id:
             return entry
     return None
+
+
+def may_see_routes(entry: TrainingConfigEntry, user: Any) -> bool:
+    """Administratoren immer, sonst nur freigegebene Konten."""
+    if user is None:
+        return False
+    if user.is_admin:
+        return True
+    return user.id in entry.options.get(CONF_ROUTE_USERS, [])
 
 
 @callback
@@ -83,6 +94,12 @@ async def ws_workout(
     if summary is None:
         connection.send_error(msg["id"], "not_found", "Training nicht gefunden")
         return
+    if not may_see_routes(entry, connection.user):
+        # Zusammenfassung ja, Route und Verlaeufe nein
+        connection.send_result(
+            msg["id"], {"summary": summary, "detail": None, "detail_hidden": True}
+        )
+        return
     detail = await store.async_get_detail(msg["workout_id"])
     connection.send_result(msg["id"], {"summary": summary, "detail": detail})
 
@@ -102,6 +119,9 @@ async def ws_gpx(
     entry = _entry(hass, msg.get("entry_id"))
     if entry is None:
         connection.send_error(msg["id"], "not_found", "Kein Eintrag geladen")
+        return
+    if not may_see_routes(entry, connection.user):
+        connection.send_error(msg["id"], "unauthorized", "Route nicht freigegeben")
         return
     store = entry.runtime_data.store
     summary = store.get(msg["workout_id"])

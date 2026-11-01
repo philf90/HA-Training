@@ -289,3 +289,14 @@ def test_delete_refused_without_admin():
         " return { r1, r2, n: calls.length }; })()"
     )
     assert got == {"r1": "denied", "r2": "denied", "n": 0}
+
+
+def test_hidden_detail_shows_hint():
+    html = js(
+        CARD_WITH.replace("ADMIN", "false")
+        + ".card; (() => { const c = "
+        + CARD_WITH.replace("ADMIN", "false")
+        + "; c.card._hidden = true; c.card._render(); return c.root.innerHTML; })()"
+    )
+    assert "nicht freigegeben" in html
+    assert "gelöscht (Aufbewahrung" not in html

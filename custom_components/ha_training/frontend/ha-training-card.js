@@ -55,6 +55,7 @@ const TEXT = {
     levelsHr: "Stufen aus diesem Training: je ⅕ der Zeit",
     gpx: "GPX", del: "Löschen", delConfirm: "Wirklich löschen?",
     gpxFailed: "GPX-Export fehlgeschlagen.", delFailed: "Löschen fehlgeschlagen.",
+    hidden: "Route und Verläufe sind für dieses Konto nicht freigegeben (Einstellung der Integration Training unter „Konfigurieren“).",
   },
   en: {
     title: "Workout",
@@ -76,6 +77,7 @@ const TEXT = {
     levelsHr: "Levels from this workout: ⅕ of the time each",
     gpx: "GPX", del: "Delete", delConfirm: "Really delete?",
     gpxFailed: "GPX export failed.", delFailed: "Delete failed.",
+    hidden: "Route and charts are not shared with this account (setting of the Training integration under Configure).",
   },
 };
 
@@ -308,6 +310,7 @@ class HaTrainingCard extends HTMLElement {
     try {
       const result = await this._hass.callWS(request);
       this._summary = result.summary;
+      this._hidden = Boolean(result.detail_hidden);
       this._prepare(result.detail);
     } catch (err) {
       this._summary = this._workouts.find((w) => w.id === id) || null;
@@ -452,7 +455,7 @@ class HaTrainingCard extends HTMLElement {
       </div>
       ${this._message ? `<div class="meldung" role="status">${this._t(this._message)}</div>` : ""}
       <div class="werte">${tiles.map(([l, w, u, z]) => `<div class="wert"><div class="l">${l}</div><div class="w">${w}<small>${u}</small></div><div class="z">${z}</div></div>`).join("")}</div>
-      ${!this._detail ? `<div class="hinweis">${this._t("pruned")}</div>` : ""}
+      ${!this._detail ? `<div class="hinweis">${this._t(this._hidden ? "hidden" : "pruned")}</div>` : ""}
       ${hasRoute ? `
       <div class="abschnitt">
         <div class="zeile"><h3>${this._t("route")}</h3>
