@@ -33,7 +33,7 @@
  * damit sie zu den Splits passen.
  */
 
-const VERSION = "0.1.8";
+const VERSION = "0.1.9";
 const LEAFLET = "/ha_training/leaflet";
 const OSM_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>';
@@ -243,9 +243,9 @@ class HaTrainingCard extends HTMLElement {
   set hass(hass) {
     const first = !this._hass;
     this._hass = hass;
-    const latest = this._latestId(hass);
-    if (first || latest !== this._latestSeen) {
-      this._latestSeen = latest;
+    const key = this._watchKey(hass);
+    if (first || key !== this._seenKey) {
+      this._seenKey = key;
       this._loadList();
     }
   }
@@ -293,16 +293,24 @@ class HaTrainingCard extends HTMLElement {
     return hexToRgb(value) ? value : fallback;
   }
 
-  // Entitaet "Letztes Training" der Integration: Aenderung -> Liste neu laden
-  _latestId(hass) {
-    const entities = hass.entities || {};
-    for (const id of Object.keys(entities)) {
-      if (entities[id].platform === "ha_training" && id.startsWith("sensor.")) {
-        const value = hass.states[id]?.attributes?.workout_id;
-        if (value) return value;
+  // Sensor "Letztes Training": neues Training (workout_id) oder sonst eine
+  // Aenderung (revision: geaendert, geloescht, Optionen) -> Liste neu laden.
+  // Die Entitaet einmal suchen statt bei jeder Zustandsaenderung in Home
+  // Assistant alle Entitaeten durchzugehen.
+  _watchKey(hass) {
+    const known = this._watchEntity && hass.states[this._watchEntity];
+    if (!known) {
+      this._watchEntity = null;
+      const entities = hass.entities || {};
+      for (const id of Object.keys(entities)) {
+        if (entities[id].platform === "ha_training" && id.startsWith("sensor.") && hass.states[id]?.attributes && "workout_id" in hass.states[id].attributes) {
+          this._watchEntity = id;
+          break;
+        }
       }
     }
-    return null;
+    const attrs = this._watchEntity ? hass.states[this._watchEntity]?.attributes : null;
+    return attrs ? `${attrs.workout_id}|${attrs.revision ?? ""}` : null;
   }
 
   async _loadList() {

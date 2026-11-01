@@ -14,7 +14,7 @@ dieser Integration. Home Assistant speichert die Trainings privat, zeigt das
 letzte Training und die Woche als Sensoren und meldet neue Trainings als
 Ereignis. Die mitgelieferte Karte zeichnet die Route auf einer Karte, nach
 Tempo oder Puls eingefärbt, mit gekoppeltem Verlauf und Kilometer-Tabelle.
-Version 0.1.8.
+Version 0.1.9.
 
 ## Inhalt
 
@@ -205,9 +205,18 @@ der Instanz; in einer deutschen Instanz z. B.:
 | `sensor.training_distanz_diese_woche` | km seit Montag |
 | `sensor.training_trainingszeit_diese_woche` | Minuten seit Montag |
 | `sensor.training_aktive_energie_diese_woche` | kcal seit Montag |
+| `sensor.training_trainings_letzte_woche` | Anzahl Montag bis Sonntag der Vorwoche |
+| `sensor.training_distanz_letzte_woche` | km der Vorwoche |
+| `sensor.training_trainingszeit_letzte_woche` | Minuten der Vorwoche |
+| `sensor.training_aktive_energie_letzte_woche` | kcal der Vorwoche |
 | `event.training_neues_training` | Ereignis `neues_training` je neuem Training |
 
-Die Wochensummen haben `state_class: total` mit `last_reset` am Montag 00:00.
+Die Summen „diese Woche“ haben `state_class: total` mit `last_reset` am Montag
+00:00. Die Summen „letzte Woche“ rechnen jederzeit neu und haben keine
+`state_class`: Kommt ein Training vom Sonntagabend erst am Montag an (iOS
+entscheidet, wann Health Auto Export sendet), zählt es dort; in „diese Woche“
+zählt es nicht, und die Langzeitstatistik der abgeschlossenen Woche bleibt ohne
+dieses Training.
 
 Das Ereignis trägt `workout_id`, `name`, `start`, `end`, `distance_km`,
 `duration_s`, `speed_kmh`, `hr_avg`, `hr_max`, `active_kcal`, `effort` und
@@ -252,6 +261,9 @@ color_by: speed      # oder heart_rate
   unten rechts in der Karte (Quellenangabe des Anbieters).
 - Kopf mit Name, Datum, Uhrzeit und einer Auswahl der letzten 30 Trainings
   (dazu das fest eingestellte, wenn es älter ist).
+- Die Karte lädt von selbst neu, wenn ein Training dazukommt, sich ändert
+  (z. B. später mit Route nachgeschickt) oder gelöscht wird und wenn sich die
+  Einstellungen unter „Konfigurieren“ ändern.
 - Kennzahlen: Distanz (dazu die Länge der GPS-Route), Zeit aktiv mit Pause,
   Tempo und min/km, Puls, aktive Energie, Anstrengung, Höhenmeter,
   Schrittfrequenz, Temperatur und Luftfeuchte.
@@ -337,6 +349,9 @@ HACS zeigt neue Versionen als Update an. Nach dem Herunterladen Home Assistant
 neu starten, danach einmal die Seite neu laden, in der Companion App den
 Frontend-Cache zurücksetzen.
 
+**Update auf 0.1.9:** keine Migration. Vier neue Sensoren „… letzte Woche“
+(siehe [Entitäten](#entitäten)); die Karte lädt bei Änderungen von selbst neu.
+
 **Update auf 0.1.8:** keine Migration. Die Karte lädt eine fest eingestellte
 Trainings-ID direkt und schickt OpenStreetMap jetzt den Ursprung der
 Home-Assistant-Adresse als Referer (siehe [Datenschutz und Speicher](#datenschutz-und-speicher)).
@@ -414,7 +429,11 @@ geht ohne Backup, dann prüft der Webhook den Token aber nicht mehr.
 
 ## Teststand
 
-- **0.1.x:** 133 automatische Tests. 0.1.8: fest eingestellte ältere ID direkt
+- **0.1.x:** 140 automatische Tests. 0.1.9: Nachzügler vom Sonntag in der
+  letzten Woche, Grenzen der Woche (Montag 00:00 beidseitig), Vorwoche über die
+  Zeitumstellung, Zähler `revision` bei Änderung, Löschen und Optionen, nicht
+  im Verlauf, Karte lädt bei neuem Zähler und sucht die Entität nur einmal.
+  0.1.8: fest eingestellte ältere ID direkt
   geladen und in der Auswahl, fehlende ID mit Rückfall und Hinweis, eigene
   Kachel-URL nur als https mit {z}/{x}/{y}, Quellenangabe als Text; Referer der
   Kacheln in Chromium geprüft. 0.1.7: Route, Verläufe und GPX nur für
