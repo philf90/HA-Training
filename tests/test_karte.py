@@ -300,3 +300,75 @@ def test_hidden_detail_shows_hint():
     )
     assert "nicht freigegeben" in html
     assert "gelöscht (Aufbewahrung" not in html
+
+
+FIXED = r"""
+(async () => {
+  const root = { innerHTML: "", querySelector: () => null, querySelectorAll: () => [] };
+  const calls = [];
+  const list = Array.from({ length: 60 }, (_, i) => ({
+    id: `W-${i}`, name: "Walk", start: new Date(Date.UTC(2026, 9, 30) - i * 864e5).toISOString(),
+  }));
+  const card = new HaTrainingCard();
+  card.shadowRoot = { getElementById: (id) => (id === "inhalt" ? root : null) };
+  card._config = { workout: "WANTED" };
+  card._selected = "WANTED";
+  card._hass = {
+    language: "de", locale: { language: "de" }, config: { time_zone: "Europe/Berlin" },
+    callWS: async (req) => {
+      calls.push(req.type === "ha_training/workouts" ? "list" : req.workout_id);
+      if (req.type === "ha_training/workouts") return { workouts: list.slice(0, req.limit) };
+      const w = list.find((x) => x.id === req.workout_id);
+      if (!w) throw new Error("not_found");
+      return { summary: w, detail: null };
+    },
+  };
+  await card._loadList();
+  return { current: card._current, calls, message: card._message || null,
+           firstOption: (root.innerHTML.match(/<option value="([^"]+)"/) || [])[1] || null };
+})()
+"""
+
+
+def test_fixed_workout_older_than_list_is_loaded():
+    got = js(FIXED.replace("WANTED", "W-40"))
+    assert got["current"] == "W-40"
+    # Direkt geladen, ohne Umweg ueber das neueste
+    assert got["calls"] == ["list", "W-40"]
+    assert got["message"] is None
+    # In der Auswahl steht das eingestellte Training, obwohl es nicht unter
+    # den letzten 30 ist
+    assert got["firstOption"] == "W-40"
+
+
+def test_missing_fixed_workout_falls_back_with_hint():
+    got = js(FIXED.replace("WANTED", "W-999"))
+    assert got["current"] == "W-0"
+    assert got["calls"] == ["list", "W-999", "W-0"]
+    assert got["message"] == "missing"
+
+
+def test_tile_source_only_accepts_https_templates():
+    got = js(
+        """[
+      tileSource({}),
+      tileSource({ tile_url: "https://tiles.example.org/{z}/{x}/{y}.png", tile_attribution: "<b>Eigene</b> & Co" }),
+      tileSource({ tile_url: "http://tiles.example.org/{z}/{x}/{y}.png" }),
+      tileSource({ tile_url: "https://tiles.example.org/{z}/{x}.png" }),
+      tileSource({ tile_url: "javascript:alert(1)//{z}{x}{y}" }),
+      tileSource({ tile_url: 'https://x.org/{z}/{x}/{y}.png" onerror="alert(1)' }),
+    ]"""
+    )
+    assert got[0]["url"] == "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+    assert got[0]["custom"] is False
+    assert got[1] == {
+        "url": "https://tiles.example.org/{z}/{x}/{y}.png",
+        "attribution": "&lt;b&gt;Eigene&lt;/b&gt; &amp; Co",
+        "custom": True,
+    }
+    assert [g["custom"] for g in got[2:]] == [False, False, False, False]
+
+
+def test_tile_layer_sends_origin_as_referer():
+    assert 'const TILE_REFERRER = "strict-origin-when-cross-origin";' in CARD_TEXT
+    assert "referrerPolicy: TILE_REFERRER," in CARD_TEXT

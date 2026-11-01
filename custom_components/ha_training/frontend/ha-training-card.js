@@ -15,6 +15,8 @@
  *   workout: latest        # oder die id eines Trainings
  *   color_by: speed        # oder heart_rate
  *   entry_id: ...          # nur bei mehreren Eintraegen noetig
+ *   tile_url: https://...{z}/{x}/{y}.png   # eigener Kachelserver (Standard OSM)
+ *   tile_attribution: ...  # Quellenangabe dazu, als Text
  *
  * Leaflet 1.9.4 liefert die Integration unter /ha_training/leaflet/ mit
  * (BSD-2-Lizenz, siehe leaflet/LICENSE). Kartenkacheln: OpenStreetMap, im
@@ -31,8 +33,24 @@
  * damit sie zu den Splits passen.
  */
 
-const VERSION = "0.1.7";
+const VERSION = "0.1.8";
 const LEAFLET = "/ha_training/leaflet";
+const OSM_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>';
+// Home Assistant schickt "Referrer-Policy: no-referrer"; die Kachelserver von
+// OpenStreetMap verlangen von Webseiten aber einen Referer und duerfen sonst
+// sperren. Fuer die Kacheln nur den Ursprung (https://<ha-adresse>/) senden,
+// nie den Pfad.
+const TILE_REFERRER = "strict-origin-when-cross-origin";
+
+// Eigene Kachel-URL nur als https mit {z}, {x} und {y}; sonst OpenStreetMap
+function tileSource(config) {
+  const url = typeof config.tile_url === "string" ? config.tile_url.trim() : "";
+  const ok = /^https:\/\/[^\s"'<>]+$/.test(url) && ["{z}", "{x}", "{y}"].every((p) => url.includes(p));
+  if (!ok) return { url: OSM_TILES, attribution: OSM_ATTRIBUTION, custom: false };
+  const text = String(config.tile_attribution ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  return { url, attribution: text, custom: true };
+}
 
 const TEXT = {
   de: {
@@ -55,6 +73,7 @@ const TEXT = {
     levelsHr: "Stufen aus diesem Training: je ⅕ der Zeit",
     gpx: "GPX", del: "Löschen", delConfirm: "Wirklich löschen?",
     gpxFailed: "GPX-Export fehlgeschlagen.", delFailed: "Löschen fehlgeschlagen.",
+    missing: "Das eingestellte Training gibt es nicht (mehr); gezeigt wird das neueste.",
     hidden: "Route und Verläufe sind für dieses Konto nicht freigegeben (Einstellung der Integration Training unter „Konfigurieren“).",
   },
   en: {
@@ -77,6 +96,7 @@ const TEXT = {
     levelsHr: "Levels from this workout: ⅕ of the time each",
     gpx: "GPX", del: "Delete", delConfirm: "Really delete?",
     gpxFailed: "GPX export failed.", delFailed: "Delete failed.",
+    missing: "The configured workout does not exist (any more); showing the latest.",
     hidden: "Route and charts are not shared with this account (setting of the Training integration under Configure).",
   },
 };
@@ -297,27 +317,46 @@ class HaTrainingCard extends HTMLElement {
       this._workouts = [];
       this._error = "noEntry";
     }
-    const id = this._selected && this._workouts.some((w) => w.id === this._selected)
-      ? this._selected
-      : this._workouts[0]?.id;
-    if (id) await this._loadWorkout(id);
+    const latest = this._workouts[0]?.id;
+    // Fest eingestellte oder gewaehlte ID direkt laden, auch wenn sie nicht
+    // unter den letzten 30 ist; nur wenn es sie nicht gibt, das neueste
+    if (this._selected && this._selected !== latest) {
+      const result = await this._fetchWorkout(this._selected);
+      if (result) { this._showWorkout(this._selected, result); return; }
+      if (this._workouts.some((w) => w.id === this._selected)) { this._showWorkout(this._selected, null); return; }
+      this._message = "missing";
+    }
+    if (latest) await this._loadWorkout(latest);
     else this._render();
   }
 
-  async _loadWorkout(id) {
+  async _fetchWorkout(id) {
     const request = { type: "ha_training/workout", workout_id: id };
     if (this._config.entry_id) request.entry_id = this._config.entry_id;
     try {
-      const result = await this._hass.callWS(request);
+      return await this._hass.callWS(request);
+    } catch (err) {
+      return null;
+    }
+  }
+
+  // Ohne Ergebnis (Fehler) die Zusammenfassung aus der Liste, falls vorhanden
+  _showWorkout(id, result) {
+    if (result) {
       this._summary = result.summary;
       this._hidden = Boolean(result.detail_hidden);
       this._prepare(result.detail);
-    } catch (err) {
+    } else {
       this._summary = this._workouts.find((w) => w.id === id) || null;
+      this._hidden = false;
       this._prepare(null);
     }
     this._current = id;
     this._render();
+  }
+
+  async _loadWorkout(id) {
+    this._showWorkout(id, await this._fetchWorkout(id));
   }
 
   // Details in Punkte umwandeln: Tempo geglaettet, Puls je Punkt aus dem Verlauf
@@ -421,7 +460,11 @@ class HaTrainingCard extends HTMLElement {
     const s = this._summary;
     const start = Date.parse(s.start) / 1000, end = s.end ? Date.parse(s.end) / 1000 : null;
     const date = new Date(start * 1000).toLocaleDateString(this._locale(), { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric", timeZone: this._hass.config?.time_zone });
-    const options = (this._workouts || []).map((w) => {
+    // Ein fest eingestelltes aelteres Training steht nicht unter den letzten
+    // 30; in der Auswahl trotzdem zeigen, sonst waere die erste Zeile markiert
+    const listed = this._workouts || [];
+    const choices = listed.some((w) => w.id === s.id) ? listed : [s, ...listed];
+    const options = choices.map((w) => {
       const d = new Date(Date.parse(w.start)).toLocaleDateString(this._locale(), { day: "2-digit", month: "2-digit", timeZone: this._hass.config?.time_zone });
       const km = w.distance_km != null ? ` · ${this._num(w.distance_km, 2)} km` : "";
       return `<option value="${this._escape(w.id)}" ${w.id === this._current ? "selected" : ""}>${d} · ${this._escape(w.name)}${km}</option>`;
@@ -446,7 +489,7 @@ class HaTrainingCard extends HTMLElement {
         <span class="kachel"><ha-icon icon="mdi:walk"></ha-icon></span>
         <div class="titel">
           <h2>${this._escape(s.name || this._t("title"))}</h2>
-          <div class="unter">${date} · ${this._clock(start)}${end ? `–${this._clock(end)}` : ""}${options && this._workouts.length > 1 ? ` · <select aria-label="${this._t("title")}">${options}</select>` : ""}</div>
+          <div class="unter">${date} · ${this._clock(start)}${end ? `–${this._clock(end)}` : ""}${options && choices.length > 1 ? ` · <select aria-label="${this._t("title")}">${options}</select>` : ""}</div>
         </div>
         ${hasRoute || this._isAdmin() ? `<div class="aktionen">
           ${hasRoute ? `<button type="button" data-a="gpx">${this._t("gpx")}</button>` : ""}
@@ -610,10 +653,12 @@ class HaTrainingCard extends HTMLElement {
     this._removeMap();
     const map = L.map(element, { scrollWheelZoom: false, attributionControl: true });
     this._map = map;
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    const tiles = tileSource(this._config);
+    L.tileLayer(tiles.url, {
       maxZoom: 19,
+      referrerPolicy: TILE_REFERRER,
       className: "kachel-dunkel",
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>',
+      attribution: tiles.attribution,
     }).addTo(map);
     const ll = this._points.map((p) => [p.lat, p.lon]);
     map.fitBounds(L.latLngBounds(ll).pad(0.08));
