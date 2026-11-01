@@ -14,7 +14,7 @@ dieser Integration. Home Assistant speichert die Trainings privat, zeigt das
 letzte Training und die Woche als Sensoren und meldet neue Trainings als
 Ereignis. Die mitgelieferte Karte zeichnet die Route auf einer Karte, nach
 Tempo oder Puls eingefärbt, mit gekoppeltem Verlauf und Kilometer-Tabelle.
-Version 0.1.7.
+Version 0.1.8.
 
 ## Inhalt
 
@@ -239,9 +239,19 @@ Dashboard-Ressource oder weitere HACS-Karten sind nicht nötig.
 type: custom:ha-training-card
 workout: latest      # oder die id eines Trainings (Attribut workout_id)
 color_by: speed      # oder heart_rate
+# optional, eigener Kachelserver statt OpenStreetMap:
+# tile_url: https://tiles.example.org/{z}/{x}/{y}.png
+# tile_attribution: © Beispiel-Karten
 ```
 
-- Kopf mit Name, Datum, Uhrzeit und einer Auswahl der letzten 30 Trainings.
+- `workout` mit einer ID lädt genau dieses Training, auch wenn es älter als
+  die letzten 30 ist. Gibt es die ID nicht (mehr), zeigt die Karte das neueste
+  Training und einen Hinweis.
+- `tile_url` muss mit `https://` beginnen und `{z}`, `{x}` und `{y}` enthalten,
+  sonst nimmt die Karte OpenStreetMap. `tile_attribution` erscheint als Text
+  unten rechts in der Karte (Quellenangabe des Anbieters).
+- Kopf mit Name, Datum, Uhrzeit und einer Auswahl der letzten 30 Trainings
+  (dazu das fest eingestellte, wenn es älter ist).
 - Kennzahlen: Distanz (dazu die Länge der GPS-Route), Zeit aktiv mit Pause,
   Tempo und min/km, Puls, aktive Energie, Anstrengung, Höhenmeter,
   Schrittfrequenz, Temperatur und Luftfeuchte.
@@ -327,6 +337,10 @@ HACS zeigt neue Versionen als Update an. Nach dem Herunterladen Home Assistant
 neu starten, danach einmal die Seite neu laden, in der Companion App den
 Frontend-Cache zurücksetzen.
 
+**Update auf 0.1.8:** keine Migration. Die Karte lädt eine fest eingestellte
+Trainings-ID direkt und schickt OpenStreetMap jetzt den Ursprung der
+Home-Assistant-Adresse als Referer (siehe [Datenschutz und Speicher](#datenschutz-und-speicher)).
+
 **Update auf 0.1.7:** keine Migration. Die Annahme am Webhook blockiert
 Home Assistant nicht mehr während großer Abgleiche (siehe Release-Hinweise);
 neu ist die Obergrenze von 1000 Trainings je Aufruf. **Konten ohne
@@ -360,6 +374,15 @@ geht ohne Backup, dann prüft der Webhook den Token aber nicht mehr.
 - Backups von Home Assistant enthalten `.storage/` und damit die Routen.
 - Entfernen der Integration löscht alle gespeicherten Trainings; einzelne
   Trainings löscht [Training löschen](#training-löschen).
+- Die Kartenkacheln lädt der Browser direkt bei OpenStreetMap (oder beim
+  Anbieter aus `tile_url`). Der Anbieter sieht dabei die IP-Adresse und welche
+  Kacheln abgerufen werden, also ungefähr das Gebiet der Route, und seit 0.1.8
+  als Referer den Ursprung der Home-Assistant-Adresse (z. B.
+  `https://mein-ha.example/`, ohne Pfad). Die Richtlinie der OSM-Kachelserver
+  verlangt von Webseiten einen Referer; Home Assistant selbst schickt keinen
+  (`Referrer-Policy: no-referrer`), deshalb setzt die Karte ihn nur für die
+  Kacheln. Die Koordinaten der Route verlassen Home Assistant dabei nicht. Wer
+  das vermeiden will, trägt mit `tile_url` einen eigenen Kachelserver ein.
 - Eine GPX-Datei aus dem [GPX-Export](#gpx-export) enthält die Route und liegt
   danach außerhalb von Home Assistant, dort, wo der Browser sie speichert.
 - Eine Stunde Gehen mit einem GPS-Punkt pro Sekunde braucht rund 170 KB.
@@ -391,7 +414,10 @@ geht ohne Backup, dann prüft der Webhook den Token aber nicht mehr.
 
 ## Teststand
 
-- **0.1.x:** 129 automatische Tests. 0.1.7: Route, Verläufe und GPX nur für
+- **0.1.x:** 133 automatische Tests. 0.1.8: fest eingestellte ältere ID direkt
+  geladen und in der Auswahl, fehlende ID mit Rückfall und Hinweis, eigene
+  Kachel-URL nur als https mit {z}/{x}/{y}, Quellenangabe als Text; Referer der
+  Kacheln in Chromium geprüft. 0.1.7: Route, Verläufe und GPX nur für
   Administratoren und freigegebene Konten (Auswahl ohne Administratoren,
   veraltete Konten fallen heraus, Hinweis in der Karte); Dekodieren und Parsen außerhalb
   des Event-Loops, Obergrenze je Aufruf (413, genau an der Grenze 200), leerer
