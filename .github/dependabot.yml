@@ -1,0 +1,7 @@
+# Haelt die auf Commit-SHAs festgelegten Actions aktuell (V7 im Pruefbericht).
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"

@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 import math
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.util import dt as dt_util
@@ -38,6 +38,38 @@ HEART_RATE_FIELDS = ("t", "min", "avg", "max")
 # uebernimmt (storage._SAFE), damit zwei IDs nie dieselbe Datei treffen. Alles
 # andere verwirft der Parser, statt es zu speichern.
 _WORKOUT_ID = re.compile(r"[A-Za-z0-9_-]{1,128}")
+
+
+# Plausible Bereiche (S8 im Pruefbericht). Bewusst grosszuegig: Sie fangen
+# Unsinn ab (fehlerhafter Export, Angreifer mit Token), nicht echte
+# Extremtrainings. Werte ausserhalb gelten als fehlend; GPS-Punkte und
+# Pulswerte ausserhalb werden uebersprungen.
+LIMITS: dict[str, tuple[float, float]] = {
+    "lat": (-90.0, 90.0),
+    "lon": (-180.0, 180.0),
+    "heart_rate": (20.0, 300.0),  # bpm
+    "duration_s": (0.0, 7 * 86400.0),  # eine Woche
+    "distance_km": (0.0, 2000.0),
+    "speed_kmh": (0.0, 300.0),
+    "kcal": (0.0, 50000.0),
+    "elevation_m": (0.0, 20000.0),
+    "effort": (0.0, 10.0),  # Apple: 1 bis 10
+    "intensity_met": (0.0, 30.0),
+    "cadence_spm": (0.0, 400.0),
+    "temperature_c": (-90.0, 60.0),
+    "humidity_pct": (0.0, 100.0),
+}
+# Ein Training, das mehr als einen Tag in der Zukunft beginnt, waere sonst fuer
+# immer das "letzte Training"
+MAX_FUTURE = timedelta(days=1)
+
+
+def _within(value: float | None, kind: str) -> float | None:
+    """Wert, wenn er im plausiblen Bereich liegt, sonst None."""
+    if value is None:
+        return None
+    low, high = LIMITS[kind]
+    return value if low <= value <= high else None
 
 
 class WorkoutError(ValueError):
@@ -128,6 +160,10 @@ def _celsius(obj: Any) -> float | None:
     return (value - 32) * 5 / 9 if unit.lower() in ("degf", "f", "°f") else value
 
 
+def _positive(value: float | None) -> float | None:
+    return value if value is not None and value >= 0 else None
+
+
 def _round(value: float | None, digits: int) -> float | None:
     return None if value is None else round(value, digits)
 
@@ -140,8 +176,8 @@ def parse_route(points: Any) -> list[list[Any]]:
     for point in points:
         if not isinstance(point, dict):
             continue
-        lat = _number(point.get("latitude", point.get("lat")))
-        lon = _number(point.get("longitude", point.get("lon")))
+        lat = _within(_number(point.get("latitude", point.get("lat"))), "lat")
+        lon = _within(_number(point.get("longitude", point.get("lon"))), "lon")
         t = _ts(point.get("timestamp"))
         if lat is None or lon is None or t is None:
             continue
@@ -153,7 +189,7 @@ def parse_route(points: Any) -> list[list[Any]]:
                 round(lon, 6),
                 _round(_number(point.get("altitude")), 1),
                 None if speed is None or speed < 0 else round(speed, 2),
-                _round(_number(point.get("horizontalAccuracy")), 1),
+                _round(_positive(_number(point.get("horizontalAccuracy"))), 1),
             ]
         )
     route.sort(key=lambda row: row[0])
@@ -169,11 +205,11 @@ def parse_heart_rate(samples: Any) -> list[list[Any]]:
         if not isinstance(sample, dict):
             continue
         t = _ts(sample.get("date"))
-        avg = _number(sample.get("Avg", sample.get("qty")))
+        avg = _within(_number(sample.get("Avg", sample.get("qty"))), "heart_rate")
         if t is None or avg is None:
             continue
-        low = _number(sample.get("Min"))
-        high = _number(sample.get("Max"))
+        low = _within(_number(sample.get("Min")), "heart_rate")
+        high = _within(_number(sample.get("Max")), "heart_rate")
         rows.append(
             [
                 t,
@@ -263,10 +299,10 @@ def parse_splits(
         metrics = item.get("metrics")
         if not isinstance(metrics, dict):
             metrics = {}
-        distance, _ = _qty(metrics.get("distance"))
-        speed, _ = _qty(metrics.get("speed"))
-        hr_max, _ = _qty(metrics.get("heartRateMaximum"))
-        active = _number(item.get("activeDuration"))
+        distance = _positive(_qty(metrics.get("distance"))[0])
+        speed = _positive(_qty(metrics.get("speed"))[0])
+        hr_max = _within(_qty(metrics.get("heartRateMaximum"))[0], "heart_rate")
+        active = _positive(_number(item.get("activeDuration")))
         if active is None:
             active = float(end - start - _pause_seconds(pauses, start, end))
         in_split = [row[2] for row in heart_rate if start <= row[0] < end]
@@ -296,7 +332,11 @@ def parse_workout(raw: Any) -> tuple[dict[str, Any], dict[str, Any]]:
         raise WorkoutError("id oder start fehlt")
     if not _WORKOUT_ID.fullmatch(workout_id):
         raise WorkoutError("id mit unerlaubten Zeichen oder zu lang")
+    if start_dt > dt_util.utcnow() + MAX_FUTURE:
+        raise WorkoutError("start in der Zukunft")
     end_dt = parse_time(raw.get("end"))
+    if end_dt is not None and end_dt < start_dt:
+        end_dt = None  # Ende vor Beginn: Ende unbekannt
     start = int(start_dt.timestamp())
     end = int(end_dt.timestamp()) if end_dt else None
 
@@ -305,24 +345,29 @@ def parse_workout(raw: Any) -> tuple[dict[str, Any], dict[str, Any]]:
     pauses = parse_pauses(raw.get("events"), end)
     splits = parse_splits(raw.get("splits"), heart_rate, pauses)
 
-    duration = _number(raw.get("duration"))
+    duration = _within(_number(raw.get("duration")), "duration_s")
     elapsed = None
     activities = raw.get("activities")
     for activity in activities if isinstance(activities, list) else []:
         if isinstance(activity, dict):
-            elapsed = _number(activity.get("elapsedDuration")) or elapsed
+            elapsed = (
+                _within(_number(activity.get("elapsedDuration")), "duration_s")
+                or elapsed
+            )
     if elapsed is None and end is not None:
-        elapsed = float(end - start)
-    distance = _km(raw.get("distance"))
-    speed = _kmh(raw.get("speed")) or _kmh(raw.get("avgSpeed"))
+        elapsed = _within(float(end - start), "duration_s")
+    distance = _within(_km(raw.get("distance")), "distance_km")
+    speed = _within(_kmh(raw.get("speed")) or _kmh(raw.get("avgSpeed")), "speed_kmh")
     heart = raw.get("heartRate") if isinstance(raw.get("heartRate"), dict) else {}
-    hr_avg, _ = _qty(raw.get("avgHeartRate") or heart.get("avg"))
-    hr_max, _ = _qty(raw.get("maxHeartRate") or heart.get("max"))
-    hr_min, _ = _qty(heart.get("min"))
-    effort, _ = _qty(raw.get("estimatedEffortScore") or raw.get("effortScore"))
-    cadence, _ = _qty(raw.get("stepCadence"))
-    intensity, _ = _qty(raw.get("intensity"))
-    humidity, _ = _qty(raw.get("humidity"))
+    hr_avg = _within(_qty(raw.get("avgHeartRate") or heart.get("avg"))[0], "heart_rate")
+    hr_max = _within(_qty(raw.get("maxHeartRate") or heart.get("max"))[0], "heart_rate")
+    hr_min = _within(_qty(heart.get("min"))[0], "heart_rate")
+    effort = _within(
+        _qty(raw.get("estimatedEffortScore") or raw.get("effortScore"))[0], "effort"
+    )
+    cadence = _within(_qty(raw.get("stepCadence"))[0], "cadence_spm")
+    intensity = _within(_qty(raw.get("intensity"))[0], "intensity_met")
+    humidity = _within(_qty(raw.get("humidity"))[0], "humidity_pct")
     location = raw.get("location")
 
     summary: dict[str, Any] = {
@@ -335,18 +380,22 @@ def parse_workout(raw: Any) -> tuple[dict[str, Any], dict[str, Any]]:
         "elapsed_s": _round(elapsed, 0),
         "distance_km": _round(distance, 3),
         "speed_kmh": _round(speed, 2),
-        "speed_max_kmh": _round(_kmh(raw.get("maxSpeed")), 2),
+        "speed_max_kmh": _round(_within(_kmh(raw.get("maxSpeed")), "speed_kmh"), 2),
         "pace_s_per_km": round(duration / distance) if duration and distance else None,
         "hr_avg": _round(hr_avg, 1),
         "hr_min": _round(hr_min, 0),
         "hr_max": _round(hr_max, 0),
-        "active_kcal": _round(_kcal(raw.get("activeEnergyBurned")), 0),
-        "total_kcal": _round(_kcal(raw.get("totalEnergy")), 0),
-        "elevation_up_m": _round(_meter(raw.get("elevationUp")), 1),
+        "active_kcal": _round(_within(_kcal(raw.get("activeEnergyBurned")), "kcal"), 0),
+        "total_kcal": _round(_within(_kcal(raw.get("totalEnergy")), "kcal"), 0),
+        "elevation_up_m": _round(
+            _within(_meter(raw.get("elevationUp")), "elevation_m"), 1
+        ),
         "effort": _round(effort, 1),
         "intensity_met": _round(intensity, 2),
         "cadence_spm": _round(cadence, 0),
-        "temperature_c": _round(_celsius(raw.get("temperature")), 1),
+        "temperature_c": _round(
+            _within(_celsius(raw.get("temperature")), "temperature_c"), 1
+        ),
         "humidity_pct": _round(humidity, 0),
         "pause_s": sum(b - a for a, b in pauses),
         "route_points": len(route),
@@ -364,7 +413,9 @@ def parse_workout(raw: Any) -> tuple[dict[str, Any], dict[str, Any]]:
         "pauses": pauses,
         "splits": splits,
         "steps": _series(raw.get("stepCount")),
-        "active_kcal": _series(raw.get("activeEnergy"), _kcal),
+        "active_kcal": _series(
+            raw.get("activeEnergy"), lambda s: _within(_kcal(s), "kcal")
+        ),
     }
     return summary, detail
 

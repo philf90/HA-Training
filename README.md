@@ -14,7 +14,7 @@ dieser Integration. Home Assistant speichert die Trainings privat, zeigt das
 letzte Training und die Woche als Sensoren und meldet neue Trainings als
 Ereignis. Die mitgelieferte Karte zeichnet die Route auf einer Karte, nach
 Tempo oder Puls eingefärbt, mit gekoppeltem Verlauf und Kilometer-Tabelle.
-Version 0.1.9.
+Version 0.1.10.
 
 ## Inhalt
 
@@ -114,8 +114,17 @@ das alte nur, wenn sich etwas geändert hat. Die Antwort des Webhooks nennt
 gelöscht, deshalb nicht wieder angelegt, siehe
 [Training löschen](#training-löschen)). Verworfen wird ein Training
 ohne ID oder Beginn, mit einer ID aus anderen Zeichen als Buchstaben, Ziffern,
-`_` und `-` (oder länger als 128 Zeichen) oder mit unerwartetem Aufbau; die
-übrigen Trainings desselben Aufrufs werden trotzdem gespeichert.
+`_` und `-` (oder länger als 128 Zeichen), mit unerwartetem Aufbau oder mit
+einem Beginn mehr als einen Tag in der Zukunft; die übrigen Trainings
+desselben Aufrufs werden trotzdem gespeichert.
+
+Unplausible Messwerte gelten als fehlend, statt Summen zu verfälschen:
+GPS-Punkte außerhalb von ±90°/±180° und Pulswerte außerhalb von 20–300 bpm
+werden übersprungen; negative Werte und offensichtlicher Unsinn (z. B. mehr als
+2000 km, 300 km/h, 50 000 kcal, Anstrengung über 10, Luftfeuchte über 100 %)
+erscheinen in den Sensoren als „unbekannt“. Ein Ende vor dem Beginn gilt als
+unbekannt. Die Grenzen sind bewusst großzügig, damit echte Extremtrainings
+durchgehen.
 
 Zum Schluss **Enabled** einschalten und mit **Update** speichern. Zum Testen
 in der Automation unter **Export Existing Data** → **Manual Upload** einen
@@ -360,6 +369,10 @@ HACS zeigt neue Versionen als Update an. Nach dem Herunterladen Home Assistant
 neu starten, danach einmal die Seite neu laden, in der Companion App den
 Frontend-Cache zurücksetzen.
 
+**Update auf 0.1.10:** keine Migration. Plausibilitätsprüfung der Messwerte,
+Diagramme auch bei sehr langen Trainings; schon gespeicherte Trainings bleiben
+unverändert.
+
 **Update auf 0.1.9:** keine Migration. Vier neue Sensoren „… letzte Woche“
 (siehe [Entitäten](#entitäten)); die Karte lädt bei Änderungen von selbst neu.
 
@@ -440,7 +453,11 @@ geht ohne Backup, dann prüft der Webhook den Token aber nicht mehr.
 
 ## Teststand
 
-- **0.1.x:** 140 automatische Tests. 0.1.9: Nachzügler vom Sonntag in der
+- **0.1.x:** 158 automatische Tests. 0.1.10: Koordinaten, Puls und
+  Kennzahlen außerhalb plausibler Bereiche, Grenzen selbst zulässig, Ende vor
+  Beginn, Beginn in der Zukunft (ein Tag Spielraum), Minimum/Maximum und
+  Diagramme mit 200 000 Werten ohne `RangeError`.
+  0.1.9: Nachzügler vom Sonntag in der
   letzten Woche, Grenzen der Woche (Montag 00:00 beidseitig), Vorwoche über die
   Zeitumstellung, Zähler `revision` bei Änderung, Löschen und Optionen, nicht
   im Verlauf, Karte lädt bei neuem Zähler und sucht die Entität nur einmal.

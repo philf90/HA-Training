@@ -33,7 +33,7 @@
  * damit sie zu den Splits passen.
  */
 
-const VERSION = "0.1.9";
+const VERSION = "0.1.10";
 const LEAFLET = "/ha_training/leaflet";
 const OSM_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>';
@@ -188,6 +188,21 @@ function splitRuns(rows, gap) {
   }
   if (run.length) runs.push(run);
   return runs;
+}
+
+// Kleinster und groesster Wert ohne Spread-Operator: Math.min(...liste)
+// scheiterte in Chromium zwischen 100 000 (geht) und 125 000 Werten
+// (RangeError), also bei Trainings ab 28 bis 35 Stunden mit einem Punkt pro
+// Sekunde; andere Browser nicht gemessen. Fehlende Werte
+// zaehlen nicht; ohne Werte [null, null].
+function extent(values) {
+  let lo = null, hi = null;
+  for (const v of values) {
+    if (v == null || Number.isNaN(v)) continue;
+    if (lo === null || v < lo) lo = v;
+    if (hi === null || v > hi) hi = v;
+  }
+  return [lo, hi];
 }
 
 // Faktor von der GPS-Strecke auf die Distanz von Apple (1 ohne brauchbare Werte)
@@ -814,7 +829,7 @@ class HaTrainingCard extends HTMLElement {
     };
     const hr = this._detail?.heart_rate || [];
     if (hr.length) {
-      const lo = Math.floor(Math.min(...hr.map((r) => r[1])) / 10) * 10, hi = Math.ceil(Math.max(...hr.map((r) => r[3])) / 10) * 10;
+      const lo = Math.floor(extent(hr.map((r) => r[1]))[0] / 10) * 10, hi = Math.ceil(extent(hr.map((r) => r[3]))[1] / 10) * 10;
       const ticks = []; for (let v = lo; v <= hi; v += 10) ticks.push(v);
       const color = this._color("hr");
       const mid = hr.length > 1 && hr[1][0] - hr[0][0] >= 30 ? 30 : 0;
@@ -830,7 +845,7 @@ class HaTrainingCard extends HTMLElement {
       });
     }
     if (pts.length > 1) {
-      const top = Math.max(5, Math.ceil(Math.max(...pts.map((p) => p.v || 0))));
+      const top = Math.max(5, Math.ceil(extent(pts.map((p) => p.v || 0))[1] ?? 0));
       const ticks = []; for (let v = 0; v <= top; v += top > 8 ? 2 : 1) ticks.push(v);
       const step = Math.max(1, Math.floor(pts.length / 1200));
       make(root.querySelector("#dSpeed"), {
