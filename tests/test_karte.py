@@ -82,6 +82,37 @@ def test_runs_split_at_gaps_and_missing_values():
     assert got == [[[0, 1], [60, 2]], [[200, 3]], [[310, 4], [320, 5]]]
 
 
+def test_short_burst_stays_in_chart_but_not_in_route_colour():
+    # 20 s schneller (5 km/h) mitten in gleichmaessigen 3 km/h
+    times = list(range(121))
+    values = [5 if 50 <= t < 70 else 3 for t in times]
+    chart = js(f"medianSmooth({times}, {values}, SMOOTH_CHART_S)")
+    colour = js(f"medianSmooth({times}, {values}, SMOOTH_COLOR_S)")
+    assert chart[60] == 5, "Diagramm zeigt den kurzen Abschnitt"
+    assert colour[60] == 3, "Farbe der Route bleibt ruhig"
+    assert set(colour) == {3}
+
+
+def test_smoothing_window_is_time_not_index():
+    # Luecke von 98 s (Pause): beide Seiten bleiben getrennt; fehlende Werte
+    # zaehlen nicht, ein Fenster ohne Wert ergibt null
+    times = [0, 1, 2, 100, 101, 102, 300]
+    values = [1, 1, 1, 5, 5, 5, None]
+    assert js(f"medianSmooth({times}, {json.dumps(values)}, 30)") == [
+        1,
+        1,
+        1,
+        5,
+        5,
+        5,
+        None,
+    ]
+
+
+def test_route_colour_uses_smoothed_speed():
+    assert js("[SCALES.speed.field, SMOOTH_CHART_S, SMOOTH_COLOR_S]") == ["vc", 7, 30]
+
+
 def test_distance_factor():
     # Apple 2,913 km, GPS-Strecke 3.020 m: Kilometer-Marken rutschen nach hinten
     assert js("distanceFactor(2.912755, 3020)") == pytest.approx(0.96449, abs=1e-5)
