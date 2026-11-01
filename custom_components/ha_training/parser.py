@@ -13,11 +13,15 @@ Feld, fehlt es auch in der Zusammenfassung; nichts wird geschaetzt.
 
 from __future__ import annotations
 
+import logging
 import math
+import re
 from datetime import datetime
 from typing import Any
 
 from homeassistant.util import dt as dt_util
+
+_LOGGER = logging.getLogger(__name__)
 
 KJ_PER_KCAL = 4.184
 KM_PER_MILE = 1.609344
@@ -27,6 +31,11 @@ M_PER_FOOT = 0.3048
 # bleibt. Die Reihenfolge der Felder steht hier und in der Karte.
 ROUTE_FIELDS = ("t", "lat", "lon", "alt", "speed", "hacc")
 HEART_RATE_FIELDS = ("t", "min", "avg", "max")
+
+# Apple Health vergibt UUIDs. Erlaubt sind nur Zeichen, die in HTML, in
+# Dateinamen und in der Karte nichts anrichten koennen; alles andere verwirft
+# der Parser, statt es zu speichern (die ID landet in der Auswahl der Karte).
+_WORKOUT_ID = re.compile(r"[A-Za-z0-9_.:-]{1,128}")
 
 
 class WorkoutError(ValueError):
@@ -54,9 +63,14 @@ def _ts(value: Any) -> int | None:
 def _number(value: Any) -> float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
-    if math.isnan(value) or math.isinf(value):
+    try:
+        number = float(value)
+    except OverflowError:
+        # JSON erlaubt beliebig grosse ganze Zahlen
         return None
-    return float(value)
+    if math.isnan(number) or math.isinf(number):
+        return None
+    return number
 
 
 def _qty(obj: Any) -> tuple[float | None, str]:
@@ -229,21 +243,24 @@ def parse_splits(
             b
             for b in blocks
             if isinstance(b, dict)
-            and str((b.get("targetDistance") or {}).get("units", "")).lower() == "km"
-            and _number((b.get("targetDistance") or {}).get("qty")) == 1
+            and isinstance(b.get("targetDistance"), dict)
+            and str(b["targetDistance"].get("units", "")).lower() == "km"
+            and _number(b["targetDistance"].get("qty")) == 1
         ),
         None,
     )
-    if block is None:
+    if block is None or not isinstance(block.get("items"), list):
         return []
     splits: list[dict[str, Any]] = []
-    for item in block.get("items") or []:
+    for item in block["items"]:
         if not isinstance(item, dict):
             continue
         start, end = _ts(item.get("start")), _ts(item.get("end"))
         if start is None or end is None:
             continue
-        metrics = item.get("metrics") or {}
+        metrics = item.get("metrics")
+        if not isinstance(metrics, dict):
+            metrics = {}
         distance, _ = _qty(metrics.get("distance"))
         speed, _ = _qty(metrics.get("speed"))
         hr_max, _ = _qty(metrics.get("heartRateMaximum"))
@@ -275,6 +292,8 @@ def parse_workout(raw: Any) -> tuple[dict[str, Any], dict[str, Any]]:
     start_dt = parse_time(raw.get("start"))
     if not isinstance(workout_id, str) or not workout_id or start_dt is None:
         raise WorkoutError("id oder start fehlt")
+    if not _WORKOUT_ID.fullmatch(workout_id):
+        raise WorkoutError("id mit unerlaubten Zeichen oder zu lang")
     end_dt = parse_time(raw.get("end"))
     start = int(start_dt.timestamp())
     end = int(end_dt.timestamp()) if end_dt else None
@@ -286,7 +305,8 @@ def parse_workout(raw: Any) -> tuple[dict[str, Any], dict[str, Any]]:
 
     duration = _number(raw.get("duration"))
     elapsed = None
-    for activity in raw.get("activities") or []:
+    activities = raw.get("activities")
+    for activity in activities if isinstance(activities, list) else []:
         if isinstance(activity, dict):
             elapsed = _number(activity.get("elapsedDuration")) or elapsed
     if elapsed is None and end is not None:
@@ -359,5 +379,16 @@ def parse_payload(payload: Any) -> tuple[list[tuple[dict, dict]], int]:
         try:
             parsed.append(parse_workout(raw))
         except WorkoutError:
+            rejected += 1
+        except (
+            TypeError,
+            AttributeError,
+            KeyError,
+            ValueError,
+            ArithmeticError,
+        ) as err:
+            # Unerwarteter Aufbau eines Trainings: nur dieses verwerfen, nicht
+            # den ganzen Aufruf. Ins Log nur der Typ, nie Inhalte.
+            _LOGGER.debug("Training verworfen: %s", type(err).__name__)
             rejected += 1
     return parsed, rejected
