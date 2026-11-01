@@ -14,7 +14,7 @@ dieser Integration. Home Assistant speichert die Trainings privat, zeigt das
 letzte Training und die Woche als Sensoren und meldet neue Trainings als
 Ereignis. Die mitgelieferte Karte zeichnet die Route auf einer Karte, nach
 Tempo oder Puls eingefärbt, mit gekoppeltem Verlauf und Kilometer-Tabelle.
-Version 0.1.10.
+Version 0.1.11.
 
 ## Inhalt
 
@@ -117,6 +117,10 @@ ohne ID oder Beginn, mit einer ID aus anderen Zeichen als Buchstaben, Ziffern,
 `_` und `-` (oder länger als 128 Zeichen), mit unerwartetem Aufbau oder mit
 einem Beginn mehr als einen Tag in der Zukunft; die übrigen Trainings
 desselben Aufrufs werden trotzdem gespeichert.
+
+Die Distanz wird aus km, m, mi, yd und ft umgerechnet (Yards z. B. beim
+Schwimmen); eine unbekannte Einheit gilt als fehlender Wert, ohne Einheit als
+km.
 
 Unplausible Messwerte gelten als fehlend, statt Summen zu verfälschen:
 GPS-Punkte außerhalb von ±90°/±180° und Pulswerte außerhalb von 20–300 bpm
@@ -300,7 +304,8 @@ color_by: speed      # oder heart_rate
   dafür erscheinen Stopps unter etwa 30 s dort nicht mehr violett (im
   Diagramm weiterhin).
 - Markiert sind Start, Ziel, Kilometer, Pausen und die Minute mit dem
-  höchsten Puls. Nahe Marken werden zusammengefasst.
+  höchsten Puls. Kilometer-Marken stehen bis 20 km an jedem Kilometer, ab
+  20 km alle 5 km, ab 50 km alle 10 km und ab 100 km alle 20 km. Nahe Marken werden zusammengefasst.
 - Puls (Ø mit Band min–max) und Tempo als zwei Diagramme mit gemeinsamer
   Zeitachse; Tippen in ein Diagramm oder auf die Route zeigt dieselbe Stelle
   überall.
@@ -368,6 +373,10 @@ solange das Training seine Route noch hat (siehe Aufbewahrung unter
 HACS zeigt neue Versionen als Update an. Nach dem Herunterladen Home Assistant
 neu starten, danach einmal die Seite neu laden, in der Companion App den
 Frontend-Cache zurücksetzen.
+
+**Update auf 0.1.11:** keine Migration. Distanz in Yards und Fuß, lesbare
+Achsen und weniger Kilometer-Marken bei langen Strecken; schon gespeicherte
+Trainings bleiben unverändert.
 
 **Update auf 0.1.10:** keine Migration. Plausibilitätsprüfung der Messwerte,
 Diagramme auch bei sehr langen Trainings; schon gespeicherte Trainings bleiben
@@ -453,7 +462,10 @@ geht ohne Backup, dann prüft der Webhook den Token aber nicht mehr.
 
 ## Teststand
 
-- **0.1.x:** 158 automatische Tests. 0.1.10: Koordinaten, Puls und
+- **0.1.x:** 181 automatische Tests. 0.1.11: Distanz in yd, ft, m, km, mi und
+  ohne Einheit, unbekannte Einheit als fehlend, Achsen mit höchstens sechs
+  Beschriftungen (gezeichnet für Puls 62–188 bpm und Tempo bis 35 km/h),
+  Abstand der Kilometer-Marken. 0.1.10: Koordinaten, Puls und
   Kennzahlen außerhalb plausibler Bereiche, Grenzen selbst zulässig, Ende vor
   Beginn, Beginn in der Zukunft (ein Tag Spielraum), Minimum/Maximum und
   Diagramme mit 200 000 Werten ohne `RangeError`.
