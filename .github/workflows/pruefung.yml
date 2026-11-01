@@ -18,9 +18,9 @@ jobs:
     name: Ruff und Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.13"
 
@@ -35,18 +35,22 @@ jobs:
       - name: Tests
         run: python -m pytest tests -q
 
+  # hassfest und HACS sind auf einen Commit festgelegt, laden aber ein
+  # Container-Image mit beweglichem Tag (ghcr.io/home-assistant/hassfest,
+  # ghcr.io/hacs/action:main). Das ist gewollt: Sie sollen gegen die aktuellen
+  # Regeln von Home Assistant und HACS pruefen.
   hassfest:
     name: hassfest
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: home-assistant/actions/hassfest@master
+      - uses: home-assistant/actions/hassfest@86d4564712fa02543c808e3a693dd04f9d3f8361 # master, 2026-11-01
 
   hacs:
     name: HACS
     runs-on: ubuntu-latest
     steps:
-      - uses: hacs/action@main
+      - uses: hacs/action@1ebf01c408f29afcb6406bd431bc98fd8cbb15aa # main, 2026-11-01
         with:
           category: integration
