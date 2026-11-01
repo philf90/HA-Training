@@ -88,7 +88,7 @@ async def test_migration_from_0_1_4_keeps_webhook_open(
 async def test_without_valid_token_rejected(
     hass: HomeAssistant, token_entry, hass_client_no_auth, header
 ):
-    with patch("custom_components.ha_training.parse_payload") as parse:
+    with patch("custom_components.ha_training.decode_and_parse") as parse:
         response = await send(hass_client_no_auth, header)
     assert response.status == 401
     assert response.headers["WWW-Authenticate"] == "Bearer"

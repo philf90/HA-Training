@@ -14,7 +14,7 @@ dieser Integration. Home Assistant speichert die Trainings privat, zeigt das
 letzte Training und die Woche als Sensoren und meldet neue Trainings als
 Ereignis. Die mitgelieferte Karte zeichnet die Route auf einer Karte, nach
 Tempo oder Puls eingefärbt, mit gekoppeltem Verlauf und Kilometer-Tabelle.
-Version 0.1.6.
+Version 0.1.7.
 
 ## Inhalt
 
@@ -325,6 +325,10 @@ HACS zeigt neue Versionen als Update an. Nach dem Herunterladen Home Assistant
 neu starten, danach einmal die Seite neu laden, in der Companion App den
 Frontend-Cache zurücksetzen.
 
+**Update auf 0.1.7:** keine Migration. Die Annahme am Webhook blockiert
+Home Assistant nicht mehr während großer Abgleiche (siehe Release-Hinweise);
+neu ist die Obergrenze von 1000 Trainings je Aufruf.
+
 **Update auf 0.1.6:** keine Migration. Neu sind Löschen und GPX-Export; die
 Antwort des Webhooks hat den zusätzlichen Schlüssel `geloescht`.
 
@@ -356,9 +360,14 @@ geht ohne Backup, dann prüft der Webhook den Token aber nicht mehr.
 
 - Nur Exportversion 2 ist vollständig geprüft; Version 1 wird gelesen, soweit
   ihre Felder passen (Route mit `lat`/`lon`, Puls mit `qty`).
-- Ein Aufruf darf höchstens 16 MB groß sein (Grenze von Home Assistant). Für
-  einen großen ersten Abgleich den Zeitraum in Health Auto Export kürzer
-  wählen.
+- Ein Aufruf darf höchstens 16 MB groß sein (Grenze von Home Assistant) und
+  höchstens 1000 Trainings enthalten; sonst antwortet der Webhook mit HTTP 413
+  und `{"fehler": "zu viele Trainings", "maximal": 1000}`. Eine Stunde Training
+  mit Route und Puls im Sekundentakt braucht im JSON von Health Auto Export rund
+  1 MB (gemessen: 3,08 MB für drei Stunden), an die 1000 kommt also nur ein
+  Abgleich ohne Routen heran. Für einen großen ersten Abgleich den Zeitraum
+  in Health Auto Export kürzer wählen oder dort **Batch Requests** einschalten
+  (verteilt die Daten auf mehrere Aufrufe).
 - Der Puls kommt so fein wie in der App eingestellt (Minuten oder Sekunden).
   Hat die Uhr zeitweise nicht gemessen, bleibt die Linie dort offen und die
   Route grau; einzelne Werte in einer Lücke zeigt das Diagramm als Punkt.
@@ -374,7 +383,12 @@ geht ohne Backup, dann prüft der Webhook den Token aber nicht mehr.
 
 ## Teststand
 
-- **0.1.x:** 113 automatische Tests. 0.1.6: Löschen über Aktion und
+- **0.1.x:** 123 automatische Tests. 0.1.7: Dekodieren und Parsen außerhalb
+  des Event-Loops, Obergrenze je Aufruf (413, genau an der Grenze 200), leerer
+  Inhalt, Detaildateien nur innerhalb der Aufbewahrung, dieselbe ID zweimal in
+  einem Aufruf, Speichern ohne Serialisieren im Event-Loop, Wochensummen mit
+  frühem Abbruch auch bei Zeitstempeln mit verschiedenen UTC-Offsets.
+  0.1.6: Löschen über Aktion und
   WebSocket (Sensoren rechnen neu, Detaildatei weg, nur für Administratoren),
   Sperrliste gegen erneutes Senden und über einen Neustart, wieder annehmen,
   unbekannte IDs, Löschen während Annahme und Ausdünnen (Lock), GPX mit

@@ -38,7 +38,7 @@ from .const import (
     SIGNAL_UPDATED,
     TITLE,
 )
-from .parser import parse_payload
+from .parser import PayloadError, decode_and_parse
 from .services import async_register_services
 from .storage import TrainingStore
 from .websocket import async_register_websocket
@@ -157,11 +157,17 @@ async def _async_handle_webhook(
             status=401,
             headers={hdrs.WWW_AUTHENTICATE: "Bearer"},
         )
+    body = await request.read()
     try:
-        payload = await request.json()
-    except ValueError:
-        return web.json_response({"fehler": "kein JSON"}, status=400)
-    parsed, rejected = parse_payload(payload)
+        # JSON und Parser kosten bei grossen Exporten Rechenzeit: nicht im
+        # Event-Loop, sonst steht Home Assistant so lange
+        parsed, rejected = await hass.async_add_executor_job(decode_and_parse, body)
+    except PayloadError as err:
+        if err.limit is not None:
+            return web.json_response(
+                {"fehler": err.code, "maximal": err.limit}, status=413
+            )
+        return web.json_response({"fehler": err.code}, status=400)
     store = entry.runtime_data.store
     new, updated, skipped = await store.async_add(parsed)
     if new or updated:
