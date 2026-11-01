@@ -33,7 +33,7 @@
  * damit sie zu den Splits passen.
  */
 
-const VERSION = "0.1.10";
+const VERSION = "0.1.11";
 const LEAFLET = "/ha_training/leaflet";
 const OSM_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>';
@@ -203,6 +203,27 @@ function extent(values) {
     if (hi === null || v > hi) hi = v;
   }
   return [lo, hi];
+}
+
+// Achsenbeschriftung: hoechstens etwa sechs Striche in runden Schritten.
+// Vorher je 1 bzw. 2 km/h und je 10 bpm; beim Radfahren (35 km/h) waren das
+// 18 Beschriftungen auf 120 Pixeln, die sich ueberlagerten.
+function niceTicks(lo, hi, max = 6) {
+  const span = Math.max(hi - lo, 1e-9);
+  const step = [1, 2, 5, 10, 20, 25, 50, 100, 200, 500].find((s) => span / s <= max) ?? Math.ceil(span / max);
+  const first = Math.floor(lo / step) * step, last = Math.ceil(hi / step) * step;
+  const ticks = [];
+  for (let v = first; v <= last + 1e-9; v += step) ticks.push(Math.round(v * 1000) / 1000);
+  return { ticks, lo: first, hi: last };
+}
+
+// Abstand der Kilometer-Marken auf der Karte: bei langen Strecken nicht jeden
+// Kilometer, sonst stehen bei 100 km Radfahren 100 Marken auf der Karte
+function kmMarkStep(totalKm) {
+  if (totalKm >= 100) return 20;
+  if (totalKm >= 50) return 10;
+  if (totalKm >= 20) return 5;
+  return 1;
 }
 
 // Faktor von der GPS-Strecke auf die Distanz von Apple (1 ohne brauchbare Werte)
@@ -759,7 +780,8 @@ class HaTrainingCard extends HTMLElement {
       marks.push([0, `${this._t("start")} ${this._clock(p[0].t)}`]);
       marks.push([p.length - 1, `${this._t("finish")} ${this._clock(p[p.length - 1].t)}`]);
       const f = this._dFactor || 1;
-      for (let km = 1; km * 1000 < p[p.length - 1].d * f; km++) marks.push([p.findIndex((x) => x.d * f >= km * 1000), `${km} km`]);
+      const kmStep = kmMarkStep((p[p.length - 1].d * f) / 1000);
+      for (let km = kmStep; km * 1000 < p[p.length - 1].d * f; km += kmStep) marks.push([p.findIndex((x) => x.d * f >= km * 1000), `${km} km`]);
       for (const [a, b] of this._detail?.pauses || []) {
         let i = p.findIndex((x) => x.t >= a);
         if (i < 0) i = p.length - 1;
@@ -829,12 +851,12 @@ class HaTrainingCard extends HTMLElement {
     };
     const hr = this._detail?.heart_rate || [];
     if (hr.length) {
-      const lo = Math.floor(extent(hr.map((r) => r[1]))[0] / 10) * 10, hi = Math.ceil(extent(hr.map((r) => r[3]))[1] / 10) * 10;
-      const ticks = []; for (let v = lo; v <= hi; v += 10) ticks.push(v);
+      const axis = niceTicks(extent(hr.map((r) => r[1]))[0], extent(hr.map((r) => r[3]))[1], 5);
+      const { ticks, lo } = axis, hi = Math.max(axis.hi, lo + 10);
       const color = this._color("hr");
       const mid = hr.length > 1 && hr[1][0] - hr[0][0] >= 30 ? 30 : 0;
       make(root.querySelector("#dHr"), {
-        dom: [lo, Math.max(hi, lo + 10)], ticks, value: (t) => this._hrAt(t),
+        dom: [lo, hi], ticks, value: (t) => this._hrAt(t),
         marks: (x, y) => {
           let band = "", seg = [];
           const flush = () => { if (seg.length > 1) band += `<path d="M${seg.map((q) => `${x(q[0] + mid).toFixed(1)},${y(q[3]).toFixed(1)}`).join("L")}L${seg.slice().reverse().map((q) => `${x(q[0] + mid).toFixed(1)},${y(q[1]).toFixed(1)}`).join("L")}Z" fill="${mix(color, this._color("surface"), 0.25)}" opacity="0.8"/>`; seg = []; };
@@ -845,8 +867,8 @@ class HaTrainingCard extends HTMLElement {
       });
     }
     if (pts.length > 1) {
-      const top = Math.max(5, Math.ceil(extent(pts.map((p) => p.v || 0))[1] ?? 0));
-      const ticks = []; for (let v = 0; v <= top; v += top > 8 ? 2 : 1) ticks.push(v);
+      const axis = niceTicks(0, Math.max(5, extent(pts.map((p) => p.v || 0))[1] ?? 0), 5);
+      const ticks = axis.ticks, top = axis.hi;
       const step = Math.max(1, Math.floor(pts.length / 1200));
       make(root.querySelector("#dSpeed"), {
         dom: [0, top], ticks, value: (t) => this._points[this._nearest(t)]?.v,

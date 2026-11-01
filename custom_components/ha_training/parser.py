@@ -27,6 +27,23 @@ _LOGGER = logging.getLogger(__name__)
 KJ_PER_KCAL = 4.184
 KM_PER_MILE = 1.609344
 M_PER_FOOT = 0.3048
+M_PER_YARD = 0.9144
+# Distanz in km je Einheit. Beim Schwimmen kann Health Auto Export Yards
+# liefern (Doku: swimDistance in "yd"); bisher galt jede unbekannte Einheit
+# als km, 1640 yd wurden so zu 1640 km.
+KM_PER_UNIT = {
+    "": 1.0,
+    "km": 1.0,
+    "m": 0.001,
+    "mi": KM_PER_MILE,
+    "mile": KM_PER_MILE,
+    "miles": KM_PER_MILE,
+    "yd": M_PER_YARD / 1000,
+    "yard": M_PER_YARD / 1000,
+    "yards": M_PER_YARD / 1000,
+    "ft": M_PER_FOOT / 1000,
+    "feet": M_PER_FOOT / 1000,
+}
 
 # Kompakte Reihen, damit eine Stunde Route mit einem Punkt pro Sekunde klein
 # bleibt. Die Reihenfolge der Felder steht hier und in der Karte.
@@ -115,15 +132,12 @@ def _qty(obj: Any) -> tuple[float | None, str]:
 
 
 def _km(obj: Any) -> float | None:
+    """Distanz in km; eine unbekannte Einheit gilt als fehlender Wert."""
     value, unit = _qty(obj)
     if value is None:
         return None
-    unit = unit.lower()
-    if unit in ("mi", "mile", "miles"):
-        return value * KM_PER_MILE
-    if unit == "m":
-        return value / 1000
-    return value
+    factor = KM_PER_UNIT.get(unit.strip().lower())
+    return None if factor is None else value * factor
 
 
 def _kmh(obj: Any) -> float | None:
