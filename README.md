@@ -190,6 +190,17 @@ was sie in der Zeit nicht schicken konnte, holt **Manual Upload** nach.
 Ein Gerät „Training“ mit diesen Entitäten. Die IDs entstehen aus der Sprache
 der Instanz; in einer deutschen Instanz z. B.:
 
+> **Gerät in einem Bereich:** Hat man das Gerät „Training“ einem Bereich
+> zugeordnet, kann Home Assistant die IDs von Entitäten, die erst danach
+> dazukommen (etwa nach einem Update), mit dem Bereich beginnen lassen. In einer
+> Instanz mit HA 2026.10.4 und dem Bereich „Sonstiges“ hießen die mit 0.1.9 neuen
+> Sensoren `sensor.sonstiges_training_…_letzte_woche`, die älteren weiter
+> `sensor.training_…`. Wer einheitliche IDs möchte, benennt die neuen unter
+> Einstellungen → Geräte & Dienste → Entitäten → Entität öffnen → Zahnrad
+> („Einstellungen“) → „Entitäts-ID“ um, bevor Automationen oder Dashboards sie
+> verwenden. Ab welcher Version und nach welcher
+> Regel Home Assistant den Bereich voranstellt, ist hier nicht geprüft.
+
 | Entität | Inhalt |
 |---|---|
 | `sensor.training_letztes_training` | Beginn des letzten Trainings (Zeitstempel); Attribute `workout_id`, `name`, `location`, `end` |
