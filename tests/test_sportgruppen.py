@@ -132,6 +132,8 @@ CARD = r"""
   card._current = card._summary.id;
   card._points = [];
   card._detail = { splits: [{ distance_m: 1000, active_s: 240, speed_kmh: 15, hr_avg: 100, hr_max: 110 }] };
+  // Tabelle aufgeklappt (seit 0.1.18 standardmaessig zu, siehe test_kilometer.py)
+  card._splitsOpen = true;
   card._render();
   return root.innerHTML;
 })()
