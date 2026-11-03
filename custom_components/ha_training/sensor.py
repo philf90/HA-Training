@@ -1,4 +1,5 @@
-"""Sensoren: letztes Training, Summen der laufenden und der letzten Woche.
+"""Sensoren: letztes Training, Summen der laufenden und der letzten Woche,
+gesamt und je Sportgruppe (zu Fuss, Rad, Schwimmen).
 
 Die Summen der letzten Woche rechnen jederzeit neu. So zaehlt ein Training vom
 Sonntagabend, das erst am Montag ankommt (iOS entscheidet, wann Health Auto
@@ -29,6 +30,7 @@ from . import TrainingConfigEntry
 from .const import SIGNAL_UPDATED
 from .entity import TrainingEntity
 from .parser import parse_time
+from .sport import GROUPS, sport_of
 from .storage import TrainingStore
 
 PARALLEL_UPDATES = 0
@@ -88,12 +90,29 @@ def _latest(key: str, factor: float = 1) -> Callable[[TrainingStore, datetime], 
     return value
 
 
+def _of_sport(
+    workouts: list[dict[str, Any]], sport: str | None
+) -> list[dict[str, Any]]:
+    if sport is None:
+        return workouts
+    return [w for w in workouts if sport_of(w.get("name")) == sport]
+
+
 def _week_sum(
-    key: str, factor: float = 1, previous: bool = False
+    key: str, factor: float = 1, previous: bool = False, sport: str | None = None
 ) -> Callable[[TrainingStore, datetime], Any]:
     def value(store: TrainingStore, now: datetime) -> Any:
-        workouts = week_workouts(store, now, previous)
+        workouts = _of_sport(week_workouts(store, now, previous), sport)
         return sum((w.get(key) or 0) for w in workouts) * factor
+
+    return value
+
+
+def _week_count(
+    previous: bool = False, sport: str | None = None
+) -> Callable[[TrainingStore, datetime], Any]:
+    def value(store: TrainingStore, now: datetime) -> Any:
+        return len(_of_sport(week_workouts(store, now, previous), sport))
 
     return value
 
@@ -101,14 +120,6 @@ def _week_sum(
 def _latest_start(store: TrainingStore, now: datetime) -> Any:
     latest = store.latest
     return parse_time(latest.get("start")) if latest else None
-
-
-def _week_count(store: TrainingStore, now: datetime) -> Any:
-    return len(week_workouts(store, now))
-
-
-def _last_week_count(store: TrainingStore, now: datetime) -> Any:
-    return len(week_workouts(store, now, previous=True))
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -187,7 +198,7 @@ SENSORS: tuple[TrainingSensorDescription, ...] = (
         key="week_count",
         translation_key="week_count",
         state_class=SensorStateClass.TOTAL,
-        value_fn=_week_count,
+        value_fn=_week_count(),
         week=True,
     ),
     TrainingSensorDescription(
@@ -225,7 +236,7 @@ SENSORS: tuple[TrainingSensorDescription, ...] = (
     TrainingSensorDescription(
         key="last_week_count",
         translation_key="last_week_count",
-        value_fn=_last_week_count,
+        value_fn=_week_count(previous=True),
         week=True,
     ),
     TrainingSensorDescription(
@@ -255,6 +266,53 @@ SENSORS: tuple[TrainingSensorDescription, ...] = (
         week=True,
     ),
 )
+
+
+def _sport_sensors(sport: str) -> tuple[TrainingSensorDescription, ...]:
+    """Anzahl, Distanz und Zeit je Sportgruppe, diese und letzte Woche.
+
+    Die Gesamtsummen oben bleiben unveraendert (ihre Langzeitstatistik laeuft
+    weiter); sie addieren Kilometer zu Fuss und auf dem Rad. Diese Sensoren
+    trennen sie. Aktive Energie gibt es nur gesamt.
+    """
+    result = []
+    for previous in (False, True):
+        week = "last_week" if previous else "week"
+        # Wie oben: nur die laufende Woche als Summe fuer die Statistik
+        state_class = None if previous else SensorStateClass.TOTAL
+        result += [
+            TrainingSensorDescription(
+                key=f"{week}_count_{sport}",
+                translation_key=f"{week}_count_{sport}",
+                state_class=state_class,
+                value_fn=_week_count(previous, sport),
+                week=True,
+            ),
+            TrainingSensorDescription(
+                key=f"{week}_distance_{sport}",
+                translation_key=f"{week}_distance_{sport}",
+                device_class=SensorDeviceClass.DISTANCE,
+                state_class=state_class,
+                native_unit_of_measurement=UnitOfLength.KILOMETERS,
+                suggested_display_precision=1,
+                value_fn=_week_sum("distance_km", previous=previous, sport=sport),
+                week=True,
+            ),
+            TrainingSensorDescription(
+                key=f"{week}_duration_{sport}",
+                translation_key=f"{week}_duration_{sport}",
+                device_class=SensorDeviceClass.DURATION,
+                state_class=state_class,
+                native_unit_of_measurement=UnitOfTime.MINUTES,
+                suggested_display_precision=0,
+                value_fn=_week_sum("duration_s", 1 / 60, previous, sport),
+                week=True,
+            ),
+        ]
+    return tuple(result)
+
+
+SENSORS += tuple(d for sport in GROUPS for d in _sport_sensors(sport))
 
 
 async def async_setup_entry(

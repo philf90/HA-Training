@@ -18,11 +18,21 @@ from homeassistant.core import HomeAssistant, callback
 
 from .const import CONF_ROUTE_USERS, DOMAIN
 from .gpx import build_gpx, filename
+from .sport import sport_of
 
 if TYPE_CHECKING:
     from . import TrainingConfigEntry
 
 MAX_LIST = 500
+
+
+def _with_sport(summary: dict[str, Any]) -> dict[str, Any]:
+    """Kopie mit Sportgruppe fuer die Karte; berechnet, nicht gespeichert.
+
+    So gilt sie auch fuer Trainings, die vor 0.1.12 gespeichert wurden, und
+    die Erkennung steht nur an einer Stelle (sport.py).
+    """
+    return {**summary, "sport": sport_of(summary.get("name"))}
 
 
 def _entry(hass: HomeAssistant, entry_id: str | None) -> TrainingConfigEntry | None:
@@ -67,7 +77,9 @@ def ws_workouts(
     if entry is None:
         connection.send_error(msg["id"], "not_found", "Kein Eintrag geladen")
         return
-    workouts = entry.runtime_data.store.workouts[: msg["limit"]]
+    workouts = [
+        _with_sport(w) for w in entry.runtime_data.store.workouts[: msg["limit"]]
+    ]
     connection.send_result(
         msg["id"], {"entry_id": entry.entry_id, "workouts": workouts}
     )
@@ -94,6 +106,7 @@ async def ws_workout(
     if summary is None:
         connection.send_error(msg["id"], "not_found", "Training nicht gefunden")
         return
+    summary = _with_sport(summary)
     if not may_see_routes(entry, connection.user):
         # Zusammenfassung ja, Route und Verlaeufe nein
         connection.send_result(

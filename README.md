@@ -14,7 +14,7 @@ dieser Integration. Home Assistant speichert die Trainings privat, zeigt das
 letzte Training und die Woche als Sensoren und meldet neue Trainings als
 Ereignis. Die mitgelieferte Karte zeichnet die Route auf einer Karte, nach
 Tempo oder Puls eingefärbt, mit gekoppeltem Verlauf und Kilometer-Tabelle.
-Version 0.1.11.
+Version 0.1.12.
 
 ## Inhalt
 
@@ -233,6 +233,24 @@ der Instanz; in einer deutschen Instanz z. B.:
 | `sensor.training_distanz_letzte_woche` | km der Vorwoche |
 | `sensor.training_trainingszeit_letzte_woche` | Minuten der Vorwoche |
 | `sensor.training_aktive_energie_letzte_woche` | kcal der Vorwoche |
+| `sensor.training_trainings_zu_fuss_diese_woche` | Anzahl zu Fuß seit Montag 00:00 |
+| `sensor.training_distanz_zu_fuss_diese_woche` | km zu Fuß seit Montag |
+| `sensor.training_trainingszeit_zu_fuss_diese_woche` | Minuten zu Fuß seit Montag |
+| `sensor.training_trainings_zu_fuss_letzte_woche` | Anzahl zu Fuß der Vorwoche |
+| `sensor.training_distanz_zu_fuss_letzte_woche` | km zu Fuß der Vorwoche |
+| `sensor.training_trainingszeit_zu_fuss_letzte_woche` | Minuten zu Fuß der Vorwoche |
+| `sensor.training_trainings_radfahren_diese_woche` | Anzahl Radfahren seit Montag 00:00 |
+| `sensor.training_distanz_radfahren_diese_woche` | km Radfahren seit Montag |
+| `sensor.training_trainingszeit_radfahren_diese_woche` | Minuten Radfahren seit Montag |
+| `sensor.training_trainings_radfahren_letzte_woche` | Anzahl Radfahren der Vorwoche |
+| `sensor.training_distanz_radfahren_letzte_woche` | km Radfahren der Vorwoche |
+| `sensor.training_trainingszeit_radfahren_letzte_woche` | Minuten Radfahren der Vorwoche |
+| `sensor.training_trainings_schwimmen_diese_woche` | Anzahl Schwimmen seit Montag 00:00 |
+| `sensor.training_distanz_schwimmen_diese_woche` | km Schwimmen seit Montag |
+| `sensor.training_trainingszeit_schwimmen_diese_woche` | Minuten Schwimmen seit Montag |
+| `sensor.training_trainings_schwimmen_letzte_woche` | Anzahl Schwimmen der Vorwoche |
+| `sensor.training_distanz_schwimmen_letzte_woche` | km Schwimmen der Vorwoche |
+| `sensor.training_trainingszeit_schwimmen_letzte_woche` | Minuten Schwimmen der Vorwoche |
 | `event.training_neues_training` | Ereignis `neues_training` je neuem Training |
 
 Die Summen „diese Woche“ haben `state_class: total` mit `last_reset` am Montag
@@ -241,6 +259,14 @@ Die Summen „diese Woche“ haben `state_class: total` mit `last_reset` am Mont
 entscheidet, wann Health Auto Export sendet), zählt es dort; in „diese Woche“
 zählt es nicht, und die Langzeitstatistik der abgeschlossenen Woche bleibt ohne
 dieses Training.
+
+Die Summen gesamt zählen alle Trainings, also auch Kilometer zu Fuß und auf
+dem Rad zusammen. Die Summen je Sportart (seit 0.1.12) trennen sie; die
+Sportart erkennt die Integration am Namen (siehe Karte). „Sonstige“ Trainings
+wie Yoga zählen nur gesamt. Aktive Energie gibt es nur gesamt. Die Summen je
+Sportart „diese Woche“ haben wie die gesamten `state_class: total`, die der
+letzten Woche keine. Für Trainings vor 0.1.12 rechnen sie rückwirkend, solange
+die Woche läuft; die Langzeitstatistik beginnt mit der Installation.
 
 Das Ereignis trägt `workout_id`, `name`, `start`, `end`, `distance_km`,
 `duration_s`, `speed_kmh`, `hr_avg`, `hr_max`, `active_kcal`, `effort` und
@@ -291,6 +317,14 @@ color_by: speed      # oder heart_rate
 - Kennzahlen: Distanz (dazu die Länge der GPS-Route), Zeit aktiv mit Pause,
   Tempo und min/km, Puls, aktive Energie, Anstrengung, Höhenmeter,
   Schrittfrequenz, Temperatur und Luftfeuchte.
+- Sportart: Die Integration erkennt sie am Namen des Trainings, deutsch und
+  englisch (Health Auto Export schickt nur den Namen, z. B. „Outdoor
+  Radfahren“). Zu Fuß (Gehen, Spaziergang, Laufen, Wandern, Walking, Running,
+  Hiking), Radfahren (Radfahren, Cycling, Bike) und Schwimmen (Schwimmen,
+  Swimming); alles andere ist „sonstige“. Danach richten sich das Symbol im
+  Kopf und zwei Kacheln: Schrittfrequenz nur zu Fuß (auf dem Rad zählt die
+  Uhr Armbewegungen), sonst Temperatur. Beim Radfahren steht unter dem Tempo
+  der Höchstwert statt min/km, und die Kilometer-Tabelle zeigt km/h vorne.
 - Route auf OpenStreetMap, nach Tempo oder Puls in fünf Stufen eingefärbt.
   Die Grenzen kommen aus dem jeweiligen Training: Tempo unter 1 km/h ist
   „Stopp“, der Rest in Vierteln der Zeit in Bewegung; Puls in Fünfteln der
@@ -462,7 +496,10 @@ geht ohne Backup, dann prüft der Webhook den Token aber nicht mehr.
 
 ## Teststand
 
-- **0.1.x:** 181 automatische Tests. 0.1.11: Distanz in yd, ft, m, km, mi und
+- **0.1.x:** 212 automatische Tests. 0.1.12: Sportart aus deutschen und
+  englischen Namen (auch Skilanglauf und Rollstuhl nicht zu Fuß), Wochensummen
+  je Sportart neben unveränderten Gesamtsummen, Sportart nur berechnet, Karte
+  mit Symbol, Kacheln und Tabelle je Sportart. 0.1.11: Distanz in yd, ft, m, km, mi und
   ohne Einheit, unbekannte Einheit als fehlend, Achsen mit höchstens sechs
   Beschriftungen (gezeichnet für Puls 62–188 bpm und Tempo bis 35 km/h),
   Abstand der Kilometer-Marken. 0.1.10: Koordinaten, Puls und

@@ -33,7 +33,7 @@
  * damit sie zu den Splits passen.
  */
 
-const VERSION = "0.1.11";
+const VERSION = "0.1.12";
 const LEAFLET = "/ha_training/leaflet";
 const OSM_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>';
@@ -52,6 +52,10 @@ function tileSource(config) {
   return { url, attribution: text, custom: true };
 }
 
+// Sportgruppe kommt von der Integration (sport.py, aus dem Namen erkannt).
+// Ohne Angabe (aeltere Integration) wie bisher: Gehen.
+const SPORT_ICONS = { foot: "mdi:walk", cycling: "mdi:bike", swimming: "mdi:swim", other: "mdi:heart-pulse" };
+
 const TEXT = {
   de: {
     title: "Training",
@@ -68,7 +72,7 @@ const TEXT = {
     hint: "Über ein Diagramm oder die Route fahren", start: "Start", finish: "Ziel",
     hrPeak: "Puls-Max", stop: "unter 1 (Stopp)", from: "ab", below: "unter",
     perKm: "min/km", appleEffort: "Apple-Schätzung", gpsRoute: "GPS-Route", min: "min", max: "max",
-    noData: "keine Daten", height: "Höhe", humidity: "Luftfeuchte",
+    noData: "keine Daten", height: "Höhe", humidity: "Luftfeuchte", temperature: "Temperatur",
     levelsSpeed: "Stufen aus diesem Training: je ¼ der Zeit in Bewegung; Tempo für die Farbe über 1 min geglättet",
     levelsHr: "Stufen aus diesem Training: je ⅕ der Zeit",
     gpx: "GPX", del: "Löschen", delConfirm: "Wirklich löschen?",
@@ -91,7 +95,7 @@ const TEXT = {
     hint: "Move over a chart or the route", start: "Start", finish: "Finish",
     hrPeak: "Max HR", stop: "below 1 (stop)", from: "from", below: "below",
     perKm: "min/km", appleEffort: "Apple estimate", gpsRoute: "GPS route", min: "min", max: "max",
-    noData: "no data", height: "Altitude", humidity: "humidity",
+    noData: "no data", height: "Altitude", humidity: "humidity", temperature: "Temperature",
     levelsSpeed: "Levels from this workout: ¼ of the moving time each; speed for the colour smoothed over 1 min",
     levelsHr: "Levels from this workout: ⅕ of the time each",
     gpx: "GPX", del: "Delete", delConfirm: "Really delete?",
@@ -516,21 +520,30 @@ class HaTrainingCard extends HTMLElement {
     const pts = this._points;
     const gps = pts.length ? pts[pts.length - 1].d / 1000 : null;
     const pace = s.pace_s_per_km;
+    const sport = s.sport || "foot";
+    // Beim Radfahren: Hoechstwert statt min/km unter dem Tempo
+    const speedNote = sport === "cycling"
+      ? (s.speed_max_kmh != null ? `${this._t("max")} ${this._num(s.speed_max_kmh, 1)} km/h` : "")
+      : (pace ? `${this._duration(pace)} ${this._t("perKm")}` : "");
+    const weather = s.humidity_pct != null ? `${this._num(s.humidity_pct)} % ${this._t("humidity")}` : "";
     const tiles = [
       [this._t("distance"), this._num(s.distance_km, 2), "km", gps != null ? `${this._t("gpsRoute")} ${this._num(gps, 2)} km` : ""],
       [this._t("active"), this._duration(s.duration_s), "", `${this._t("total")} ${this._duration(s.elapsed_s)}${s.pause_s ? ` · ${this._t("pause")} ${this._duration(s.pause_s)}` : ""}`],
-      [this._t("speed"), this._num(s.speed_kmh, 1), "km/h", pace ? `${this._duration(pace)} ${this._t("perKm")}` : ""],
+      [this._t("speed"), this._num(s.speed_kmh, 1), "km/h", speedNote],
       [this._t("hrAvg"), this._num(s.hr_avg), "bpm", `${this._t("min")} ${this._num(s.hr_min)} · ${this._t("max")} ${this._num(s.hr_max)}`],
       [this._t("energy"), this._num(s.active_kcal), "kcal", s.total_kcal != null ? `${this._t("total")} ${this._num(s.total_kcal)} kcal` : ""],
       [this._t("effort"), this._num(s.effort), "/ 10", `${this._t("appleEffort")}${s.intensity_met != null ? ` · ${this._num(s.intensity_met, 1)} MET` : ""}`],
       [this._t("elevation"), this._num(s.elevation_up_m), "m", ""],
-      [this._t("cadence"), this._num(s.cadence_spm), "/min", [s.temperature_c != null ? `${this._num(s.temperature_c)} °C` : "", s.humidity_pct != null ? `${this._num(s.humidity_pct)} % ${this._t("humidity")}` : ""].filter(Boolean).join(" · ")],
+      // Schrittfrequenz nur zu Fuss; auf dem Rad zaehlt die Uhr Armbewegungen
+      sport === "foot"
+        ? [this._t("cadence"), this._num(s.cadence_spm), "/min", [s.temperature_c != null ? `${this._num(s.temperature_c)} °C` : "", weather].filter(Boolean).join(" · ")]
+        : [this._t("temperature"), this._num(s.temperature_c), "°C", weather],
     ];
     const hasRoute = pts.length > 1;
     const hasHr = (this._detail?.heart_rate || []).length > 0;
     root.innerHTML = `
       <div class="kopf">
-        <span class="kachel"><ha-icon icon="mdi:walk"></ha-icon></span>
+        <span class="kachel"><ha-icon icon="${SPORT_ICONS[sport] || SPORT_ICONS.foot}"></ha-icon></span>
         <div class="titel">
           <h2>${this._escape(s.name || this._t("title"))}</h2>
           <div class="unter">${date} · ${this._clock(start)}${end ? `–${this._clock(end)}` : ""}${options && choices.length > 1 ? ` · <select aria-label="${this._t("title")}">${options}</select>` : ""}</div>
@@ -666,12 +679,15 @@ class HaTrainingCard extends HTMLElement {
 
   _splitRows() {
     let sum = 0;
+    const cycling = this._summary?.sport === "cycling";
     return this._detail.splits.map((sp) => {
       const from = sum / 1000;
       sum += sp.distance_m || 0;
       const to = sum / 1000;
       const pace = sp.distance_m ? sp.active_s / (sp.distance_m / 1000) : null;
-      return `<tr><td>${this._num(from, 0)}–${this._num(to, Number.isInteger(Math.round(to * 1000) / 1000) ? 0 : 2)} km</td><td>${this._duration(sp.active_s)}</td><td>${pace ? `${this._duration(pace)} <small>${this._t("perKm")}</small>` : "–"}<br><small>${this._num(sp.speed_kmh, 1)} km/h</small></td><td>${this._num(sp.hr_avg)}</td><td>${this._num(sp.hr_max)}</td></tr>`;
+      return `<tr><td>${this._num(from, 0)}–${this._num(to, Number.isInteger(Math.round(to * 1000) / 1000) ? 0 : 2)} km</td><td>${this._duration(sp.active_s)}</td><td>${cycling
+        ? `${this._num(sp.speed_kmh, 1)} <small>km/h</small><br><small>${pace ? `${this._duration(pace)} ${this._t("perKm")}` : "–"}</small>`
+        : `${pace ? `${this._duration(pace)} <small>${this._t("perKm")}</small>` : "–"}<br><small>${this._num(sp.speed_kmh, 1)} km/h</small>`}</td><td>${this._num(sp.hr_avg)}</td><td>${this._num(sp.hr_max)}</td></tr>`;
     }).join("");
   }
 

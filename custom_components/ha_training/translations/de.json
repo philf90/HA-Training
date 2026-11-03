@@ -110,6 +110,60 @@
       },
       "last_week_active_energy": {
         "name": "Aktive Energie letzte Woche"
+      },
+      "week_count_foot": {
+        "name": "Trainings zu Fuß diese Woche"
+      },
+      "week_distance_foot": {
+        "name": "Distanz zu Fuß diese Woche"
+      },
+      "week_duration_foot": {
+        "name": "Trainingszeit zu Fuß diese Woche"
+      },
+      "last_week_count_foot": {
+        "name": "Trainings zu Fuß letzte Woche"
+      },
+      "last_week_distance_foot": {
+        "name": "Distanz zu Fuß letzte Woche"
+      },
+      "last_week_duration_foot": {
+        "name": "Trainingszeit zu Fuß letzte Woche"
+      },
+      "week_count_cycling": {
+        "name": "Trainings Radfahren diese Woche"
+      },
+      "week_distance_cycling": {
+        "name": "Distanz Radfahren diese Woche"
+      },
+      "week_duration_cycling": {
+        "name": "Trainingszeit Radfahren diese Woche"
+      },
+      "last_week_count_cycling": {
+        "name": "Trainings Radfahren letzte Woche"
+      },
+      "last_week_distance_cycling": {
+        "name": "Distanz Radfahren letzte Woche"
+      },
+      "last_week_duration_cycling": {
+        "name": "Trainingszeit Radfahren letzte Woche"
+      },
+      "week_count_swimming": {
+        "name": "Trainings Schwimmen diese Woche"
+      },
+      "week_distance_swimming": {
+        "name": "Distanz Schwimmen diese Woche"
+      },
+      "week_duration_swimming": {
+        "name": "Trainingszeit Schwimmen diese Woche"
+      },
+      "last_week_count_swimming": {
+        "name": "Trainings Schwimmen letzte Woche"
+      },
+      "last_week_distance_swimming": {
+        "name": "Distanz Schwimmen letzte Woche"
+      },
+      "last_week_duration_swimming": {
+        "name": "Trainingszeit Schwimmen letzte Woche"
       }
     }
   },

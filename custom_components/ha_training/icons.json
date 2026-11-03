@@ -56,6 +56,60 @@
       },
       "last_week_active_energy": {
         "default": "mdi:fire"
+      },
+      "week_count_foot": {
+        "default": "mdi:walk"
+      },
+      "week_distance_foot": {
+        "default": "mdi:walk"
+      },
+      "week_duration_foot": {
+        "default": "mdi:walk"
+      },
+      "last_week_count_foot": {
+        "default": "mdi:walk"
+      },
+      "last_week_distance_foot": {
+        "default": "mdi:walk"
+      },
+      "last_week_duration_foot": {
+        "default": "mdi:walk"
+      },
+      "week_count_cycling": {
+        "default": "mdi:bike"
+      },
+      "week_distance_cycling": {
+        "default": "mdi:bike"
+      },
+      "week_duration_cycling": {
+        "default": "mdi:bike"
+      },
+      "last_week_count_cycling": {
+        "default": "mdi:bike"
+      },
+      "last_week_distance_cycling": {
+        "default": "mdi:bike"
+      },
+      "last_week_duration_cycling": {
+        "default": "mdi:bike"
+      },
+      "week_count_swimming": {
+        "default": "mdi:swim"
+      },
+      "week_distance_swimming": {
+        "default": "mdi:swim"
+      },
+      "week_duration_swimming": {
+        "default": "mdi:swim"
+      },
+      "last_week_count_swimming": {
+        "default": "mdi:swim"
+      },
+      "last_week_distance_swimming": {
+        "default": "mdi:swim"
+      },
+      "last_week_duration_swimming": {
+        "default": "mdi:swim"
       }
     }
   },
