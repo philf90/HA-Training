@@ -15,6 +15,7 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 
 from . import rekorde
 from .const import (
@@ -99,7 +100,22 @@ def ws_records(
     if entry is None:
         connection.send_error(msg["id"], "not_found", "Kein Eintrag geladen")
         return
-    connection.send_result(msg["id"], rekorde.cached(entry.runtime_data.store))
+    # Entitaets-IDs der Sensoren (Sprache der Instanz, ggf. umbenannt): ein
+    # Tipp auf eine Kachel der Karte "Bestleistungen" oeffnet deren Verlauf
+    registry = er.async_get(hass)
+    entities = {
+        key: registry.async_get_entity_id(
+            "sensor", DOMAIN, f"{entry.entry_id}_{sensor_key}"
+        )
+        for key, sensor_key in (
+            *((key, f"record_{key}") for key in rekorde.RECORDS),
+            (rekorde.STREAK, "streak"),
+            (rekorde.STREAK_LONGEST, "streak_longest"),
+        )
+    }
+    connection.send_result(
+        msg["id"], {**rekorde.cached(entry.runtime_data.store), "entities": entities}
+    )
 
 
 @websocket_api.websocket_command(

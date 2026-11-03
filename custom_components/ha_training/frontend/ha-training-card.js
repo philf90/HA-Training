@@ -2,13 +2,17 @@
  * Karte "Training" (custom:ha-training-card) der Integration Training.
  *
  * Holt Trainings ueber die WebSocket-API der Integration (nur angemeldete
- * Nutzer): ha_training/workouts (Liste), ha_training/workout (Details mit
- * Route und Verlaeufen) und ha_training/records (Bestleistungen, Serien). Zeigt Kennzahlen, die Route auf einer Karte (nach
+ * Nutzer): ha_training/workouts (Liste) und ha_training/workout (Details mit
+ * Route und Verlaeufen). Zeigt Kennzahlen, die Route auf einer Karte (nach
  * Tempo oder Puls eingefaerbt), Puls- und Tempoverlauf mit gemeinsamer Zeitachse
  * und die Kilometer-Splits von Apple. Tippen in ein Diagramm oder auf die Route
  * markiert dieselbe Stelle ueberall. "GPX" laedt die Route als GPX-Datei
  * (ha_training/gpx), "Loeschen" (nur Administratoren, zweiter Klick bestaetigt)
  * loescht das Training (ha_training/delete_workout).
+ *
+ * Zweite Karte in dieser Datei: custom:ha-training-records-card zeigt die
+ * Bestleistungen (ha_training/records) je Sportart als Kacheln, umschaltbar
+ * im Kopf; siehe HaTrainingRecordsCard unten.
  *
  * Optionen:
  *   type: custom:ha-training-card
@@ -17,7 +21,6 @@
  *   entry_id: ...          # nur bei mehreren Eintraegen noetig
  *   tile_url: https://...{z}/{x}/{y}.png   # eigener Kachelserver (Standard OSM)
  *   tile_attribution: ...  # Quellenangabe dazu, als Text
- *   records: true          # Abschnitt "Bestleistungen" (false = ausblenden)
  *
  * Leaflet 1.9.4 liefert die Integration unter /ha_training/leaflet/ mit
  * (BSD-2-Lizenz, siehe leaflet/LICENSE). Kartenkacheln: OpenStreetMap, im
@@ -34,7 +37,7 @@
  * damit sie zu den Splits passen.
  */
 
-const VERSION = "0.1.16";
+const VERSION = "0.1.17";
 const LEAFLET = "/ha_training/leaflet";
 const OSM_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>';
@@ -57,11 +60,12 @@ function tileSource(config) {
 // Ohne Angabe (aeltere Integration) wie bisher: Gehen.
 const SPORT_ICONS = { foot: "mdi:walk", cycling: "mdi:bike", swimming: "mdi:swim", other: "mdi:heart-pulse" };
 
-// Bestleistungen (rekorde.py) in dieser Reihenfolge; die Art bestimmt die Anzeige
-const RECORD_ROWS = [
-  ["distance_foot", "distance"], ["best_km_foot", "pace"], ["elevation_foot", "elevation"],
-  ["distance_cycling", "distance"], ["best_km_cycling", "speed"], ["elevation_cycling", "elevation"],
-  ["distance_swimming", "distance"],
+// Karte "Bestleistungen": Sportarten und ihre Bestleistungen (rekorde.py)
+// in dieser Reihenfolge; die Art bestimmt die Anzeige des Werts
+const RECORD_SPORTS = [
+  ["foot", "mdi:walk", [["distance_foot", "distance"], ["best_km_foot", "pace"], ["elevation_foot", "elevation"]]],
+  ["cycling", "mdi:bike", [["distance_cycling", "distance"], ["best_km_cycling", "speed"], ["elevation_cycling", "elevation"]]],
+  ["swimming", "mdi:swim", [["distance_swimming", "distance"]]],
 ];
 
 const TEXT = {
@@ -81,10 +85,10 @@ const TEXT = {
     hrPeak: "Puls-Max", stop: "unter 1 (Stopp)", from: "ab", below: "unter",
     perKm: "min/km", appleEffort: "Apple-Schätzung", gpsRoute: "GPS-Route", min: "min", max: "max",
     noData: "keine Daten", height: "Höhe", humidity: "Luftfeuchte", temperature: "Temperatur",
-    records: "Bestleistungen", streak: "Trainingsserie", longest: "längste", day: "Tag", days: "Tage",
-    rec_distance_foot: "Längste Distanz zu Fuß", rec_best_km_foot: "Schnellster Kilometer zu Fuß", rec_elevation_foot: "Meiste Höhenmeter zu Fuß",
-    rec_distance_cycling: "Längste Distanz Radfahren", rec_best_km_cycling: "Schnellster Kilometer Radfahren", rec_elevation_cycling: "Meiste Höhenmeter Radfahren",
-    rec_distance_swimming: "Längste Distanz Schwimmen", showWorkout: "Training anzeigen",
+    records: "Bestleistungen", streak: "Serie", longest: "längste", day: "Tag", days: "Tage",
+    sport_foot: "Zu Fuß", sport_cycling: "Radfahren", sport_swimming: "Schwimmen",
+    rec_distance: "Längste Distanz", rec_pace: "Schnellster Kilometer", rec_speed: "Schnellster Kilometer", rec_elevation: "Meiste Höhenmeter",
+    noRecords: "Noch keine Bestleistungen. Sie entstehen aus den Trainings zu Fuß, auf dem Rad und im Wasser.", noValue: "noch kein Wert",
     zone: "Schutzzone", zoneNote: "Teile der Route im Umkreis von {r} m um Zuhause sind ausgeblendet (Schutzzone, Einstellung der Integration).",
     levelsSpeed: "Stufen aus diesem Training: je ¼ der Zeit in Bewegung; Tempo für die Farbe über 1 min geglättet",
     levelsHr: "Stufen aus diesem Training: je ⅕ der Zeit",
@@ -109,10 +113,10 @@ const TEXT = {
     hrPeak: "Max HR", stop: "below 1 (stop)", from: "from", below: "below",
     perKm: "min/km", appleEffort: "Apple estimate", gpsRoute: "GPS route", min: "min", max: "max",
     noData: "no data", height: "Altitude", humidity: "humidity", temperature: "Temperature",
-    records: "Personal bests", streak: "Workout streak", longest: "longest", day: "day", days: "days",
-    rec_distance_foot: "Longest distance on foot", rec_best_km_foot: "Fastest kilometre on foot", rec_elevation_foot: "Most elevation on foot",
-    rec_distance_cycling: "Longest cycling distance", rec_best_km_cycling: "Fastest cycling kilometre", rec_elevation_cycling: "Most cycling elevation",
-    rec_distance_swimming: "Longest swimming distance", showWorkout: "Show workout",
+    records: "Personal bests", streak: "Streak", longest: "longest", day: "day", days: "days",
+    sport_foot: "On foot", sport_cycling: "Cycling", sport_swimming: "Swimming",
+    rec_distance: "Longest distance", rec_pace: "Fastest kilometre", rec_speed: "Fastest kilometre", rec_elevation: "Most elevation",
+    noRecords: "No personal bests yet. They come from workouts on foot, cycling and swimming.", noValue: "no value yet",
     zone: "Privacy zone", zoneNote: "Parts of the route within {r} m of home are hidden (privacy zone, setting of the integration).",
     levelsSpeed: "Levels from this workout: ¼ of the moving time each; speed for the colour smoothed over 1 min",
     levelsHr: "Levels from this workout: ⅕ of the time each",
@@ -383,7 +387,6 @@ class HaTrainingCard extends HTMLElement {
       this._workouts = [];
       this._error = "noEntry";
     }
-    this._records = this._config.records === false ? null : await this._fetchRecords();
     const latest = this._workouts[0]?.id;
     // Fest eingestellte oder gewaehlte ID direkt laden, auch wenn sie nicht
     // unter den letzten 30 ist; nur wenn es sie nicht gibt, das neueste
@@ -524,8 +527,6 @@ class HaTrainingCard extends HTMLElement {
         td { text-align: right; padding: 8px 4px; border-bottom: 1px solid var(--nachtblau-unterkachel-rand, rgba(255, 255, 255, 0.06)); }
         th:first-child, td:first-child { text-align: left; }
         td small { color: var(--nachtblau-text-sekundaer, #8794a5); }
-        .verweis { background: none; border: 0; padding: 0; font: inherit; color: var(--nachtblau-rose, #e6a0c4); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
-        .verweis[aria-current="true"] { color: var(--nachtblau-text, #f2f5f8); text-decoration: none; font-weight: 700; }
         .marke { background: var(--nachtblau-flaeche-erhoeht, #222b3c); color: var(--nachtblau-text, #f2f5f8); border: 1px solid var(--nachtblau-unterkachel-rand, rgba(255, 255, 255, 0.06)); border-radius: 8px; font: 600 11px/1.3 -apple-system, system-ui, sans-serif; padding: 4px 6px; width: max-content; max-width: 150px; text-align: center; box-shadow: 0 4px 10px -4px rgba(0, 0, 0, 0.7); transform: translate(-50%, -140%); display: inline-block; }
         .marke .teil { white-space: nowrap; }
         .leaflet-container { background: var(--nachtblau-flaeche-vertieft, #10151d); font-family: inherit; }
@@ -619,15 +620,8 @@ class HaTrainingCard extends HTMLElement {
         <h3 style="margin-bottom:6px">${this._t("splits")}</h3>
         <table><thead><tr><th>${this._t("section")}</th><th>${this._t("time")}</th><th>${this._t("pace")}</th><th>${this._t("hrAvgShort")}</th><th>${this._t("hrMaxShort")}</th></tr></thead>
         <tbody>${this._splitRows()}</tbody></table>
-      </div>` : ""}
-      ${this._recordsSection()}`;
+      </div>` : ""}`;
     root.querySelector("select")?.addEventListener("change", (e) => { this._selected = e.target.value; this._resetActions(); this._loadWorkout(e.target.value); });
-    root.querySelectorAll("[data-w]").forEach((b) => b.addEventListener("click", () => {
-      // Training einer Bestleistung zeigen, wie eine Auswahl in der Liste
-      this._selected = b.dataset.w;
-      this._resetActions();
-      this._loadWorkout(b.dataset.w);
-    }));
     root.querySelector('[data-a="gpx"]')?.addEventListener("click", () => this._exportGpx());
     root.querySelector('[data-a="del"]')?.addEventListener("click", () => this._deleteClick());
     root.querySelectorAll(".schalter button").forEach((b) => b.addEventListener("click", () => {
@@ -722,32 +716,6 @@ class HaTrainingCard extends HTMLElement {
 
   _escape(text) {
     return String(text ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  }
-
-  _recordValue(kind, v) {
-    if (kind === "pace") return `${this._duration(v)} <small>${this._t("perKm")}</small>`;
-    if (kind === "speed") return `${this._num(3600 / v, 1)} <small>km/h</small><br><small>${this._duration(v)} ${this._t("perKm")}</small>`;
-    if (kind === "elevation") return `${this._num(v)} <small>m</small>`;
-    return `${this._num(v, 2)} <small>km</small>`;
-  }
-
-  _recordsSection() {
-    const r = this._records;
-    if (!r) return "";
-    const rows = RECORD_ROWS.filter(([key]) => r[key]?.workout_id).map(([key, kind]) => {
-      const rec = r[key];
-      const d = new Date(Date.parse(rec.start)).toLocaleDateString(this._locale(), { day: "2-digit", month: "2-digit", year: "numeric", timeZone: this._hass.config?.time_zone });
-      const current = rec.workout_id === this._current;
-      return `<tr><td>${this._t(`rec_${key}`)}</td><td>${this._recordValue(kind, rec.value)}</td><td><button type="button" class="verweis" data-w="${this._escape(rec.workout_id)}" title="${this._t("showWorkout")}"${current ? ' aria-current="true"' : ""}>${d}</button></td></tr>`;
-    });
-    const days = (n) => `${this._num(n)} ${this._t(n === 1 ? "day" : "days")}`;
-    if (r.streak_longest > 0) rows.push(`<tr><td>${this._t("streak")}</td><td>${days(r.streak || 0)}</td><td><small>${this._t("longest")} ${days(r.streak_longest)}</small></td></tr>`);
-    if (!rows.length) return "";
-    return `
-      <div class="abschnitt">
-        <h3 style="margin-bottom:6px">${this._t("records")}</h3>
-        <table class="rekorde"><tbody>${rows.join("")}</tbody></table>
-      </div>`;
   }
 
   _splitRows() {
@@ -1021,6 +989,139 @@ class HaTrainingCard extends HTMLElement {
   }
 }
 
+// Karte "Bestleistungen" (custom:ha-training-records-card). Erbt Texte,
+// Zahlenformat und das Erkennen von Aenderungen (_watchKey) von der Karte
+// "Training"; Route, Diagramme und Leaflet braucht sie nicht.
+//
+// Optionen:
+//   type: custom:ha-training-records-card
+//   sport: foot            # Start-Sportart: foot, cycling oder swimming
+//   entry_id: ...          # nur bei mehreren Eintraegen noetig
+class HaTrainingRecordsCard extends HaTrainingCard {
+  static getStubConfig() {
+    return {};
+  }
+
+  setConfig(config) {
+    this._config = { ...(config || {}) };
+    this._sport = this._config.sport || null;
+    if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+    this._renderShell();
+  }
+
+  getCardSize() {
+    return 4;
+  }
+
+  getGridOptions() {
+    return { columns: 12, min_columns: 6 };
+  }
+
+  set hass(hass) {
+    const first = !this._hass;
+    this._hass = hass;
+    // Neu laden bei neuen, geaenderten oder geloeschten Trainings und taeglich
+    // (die laufende Serie haengt am Datum)
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: hass.config?.time_zone });
+    const key = `${this._watchKey(hass)}|${today}`;
+    if (first || key !== this._seenKey) {
+      this._seenKey = key;
+      this._loadRecords();
+    }
+  }
+
+  connectedCallback() {
+    if (this._records) this._render();
+  }
+
+  async _loadRecords() {
+    if (!this._hass) return;
+    const records = await this._fetchRecords();
+    this._error = records ? null : "noEntry";
+    this._records = records;
+    this._render();
+  }
+
+  _renderShell() {
+    this.shadowRoot.innerHTML = `
+      <style>
+        :host { display: block; }
+        ha-card { padding: 16px 18px; background: linear-gradient(180deg, var(--nachtblau-huelle-oben, var(--ha-card-background, #1b2231)) 0%, var(--nachtblau-huelle-unten, var(--ha-card-background, #171d29)) 55%); border-radius: 22px; border: 1px solid var(--nachtblau-huelle-rand, rgba(255, 255, 255, 0.05)); box-shadow: 0 18px 44px -22px var(--nachtblau-schatten, rgba(0, 0, 0, 0.7)); color: var(--nachtblau-text, var(--primary-text-color, #f2f5f8)); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+        .kopf { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+        .titel { flex: 1 1 auto; min-width: 0; }
+        .kachel { width: 44px; height: 44px; border-radius: 13px; display: grid; place-items: center; flex: none; background: color-mix(in srgb, var(--nachtblau-rose, #e6a0c4) 16%, transparent); border: 1px solid color-mix(in srgb, var(--nachtblau-rose, #e6a0c4) 24%, transparent); }
+        .kachel ha-icon { --mdc-icon-size: 23px; --ha-icon-display: block; color: var(--nachtblau-rose, #e6a0c4); }
+        h2 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -0.02em; }
+        .unter, .hinweis { font-size: 12.5px; color: var(--nachtblau-text-sekundaer, var(--secondary-text-color, #8794a5)); }
+        .hinweis { margin: 8px 0; line-height: 1.45; }
+        .schalter { display: flex; box-sizing: border-box; width: 100%; background: var(--nachtblau-flaeche-vertieft, #10151d); border: 1px solid var(--nachtblau-unterkachel-rand, rgba(255, 255, 255, 0.06)); border-radius: 12px; padding: 3px; gap: 3px; margin-bottom: 12px; }
+        .schalter button { all: unset; flex: 1 1 0; text-align: center; cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--nachtblau-text-sekundaer, #8794a5); padding: 7px 8px; border-radius: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .schalter button[aria-pressed="true"] { background: var(--nachtblau-flaeche-erhoeht, #222b3c); color: var(--nachtblau-text, #f2f5f8); }
+        .schalter button:focus-visible, .wert[role="button"]:focus-visible { outline: 2px solid var(--nachtblau-rose, #e6a0c4); outline-offset: 1px; }
+        .wrap { container-type: inline-size; }
+        .werte { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+        @container (min-width: 560px) { .werte { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+        .wert { background: var(--nachtblau-unterkachel, rgba(255, 255, 255, 0.028)); border: 1px solid var(--nachtblau-unterkachel-rand, rgba(255, 255, 255, 0.06)); border-radius: 14px; padding: 10px 12px; min-width: 0; }
+        .wert[role="button"] { cursor: pointer; }
+        .wert .l { font-size: 11px; font-weight: 600; color: var(--nachtblau-text-sekundaer, #8794a5); }
+        .wert .w { font-size: 17px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; margin-top: 2px; white-space: nowrap; }
+        .wert .w small { font-size: 0.62em; color: var(--nachtblau-text-sekundaer, #8794a5); font-weight: 600; margin-left: 3px; }
+        .wert .z { font-size: 11px; color: var(--nachtblau-text-sekundaer, #8794a5); margin-top: 2px; }
+      </style>
+      <ha-card><div class="wrap" id="inhalt"></div></ha-card>`;
+  }
+
+  // -> [Wert, Einheit, Zusatz]
+  _recordParts(kind, v) {
+    if (kind === "pace") return [this._duration(v), this._t("perKm"), ""];
+    if (kind === "speed") return [this._num(3600 / v, 1), "km/h", `${this._duration(v)} ${this._t("perKm")}`];
+    if (kind === "elevation") return [this._num(v), "m", ""];
+    return [this._num(v, 2), "km", ""];
+  }
+
+  _render() {
+    const root = this.shadowRoot?.getElementById("inhalt");
+    if (!root || !this._hass) return;
+    const r = this._records;
+    const days = (n) => `${this._num(n)} ${this._t(n === 1 ? "day" : "days")}`;
+    const head = (sub) => `
+      <div class="kopf">
+        <span class="kachel"><ha-icon icon="mdi:trophy"></ha-icon></span>
+        <div class="titel"><h2>${this._t("records")}</h2>${sub ? `<div class="unter">${sub}</div>` : ""}</div>
+      </div>`;
+    if (this._error) { root.innerHTML = head("") + `<div class="hinweis">${this._t("noEntry")}</div>`; return; }
+    if (!r) { root.innerHTML = head("") + `<div class="hinweis">${this._t("loading")}</div>`; return; }
+    const streak = r.streak_longest > 0 ? `${this._t("streak")} ${days(r.streak || 0)} · ${this._t("longest")} ${days(r.streak_longest)}` : "";
+    // Nur Sportarten mit mindestens einer Bestleistung
+    const sports = RECORD_SPORTS.filter(([, , rows]) => rows.some(([key]) => r[key]?.workout_id));
+    if (!sports.length) { root.innerHTML = head(streak) + `<div class="hinweis">${this._t("noRecords")}</div>`; return; }
+    if (!sports.some(([id]) => id === this._sport)) this._sport = sports[0][0];
+    const [, , rows] = sports.find(([id]) => id === this._sport);
+    const entities = r.entities || {};
+    const tiles = rows.map(([key, kind]) => {
+      const rec = r[key];
+      if (!rec?.workout_id) return `<div class="wert"><div class="l">${this._t(`rec_${kind}`)}</div><div class="w">–</div><div class="z">${this._t("noValue")}</div></div>`;
+      const [value, unit, extra] = this._recordParts(kind, rec.value);
+      const date = new Date(Date.parse(rec.start)).toLocaleDateString(this._locale(), { day: "2-digit", month: "2-digit", year: "numeric", timeZone: this._hass.config?.time_zone });
+      const entity = entities[key];
+      const open = entity ? ` role="button" tabindex="0" data-e="${this._escape(entity)}"` : "";
+      return `<div class="wert"${open}><div class="l">${this._t(`rec_${kind}`)}</div><div class="w">${value}<small>${unit}</small></div><div class="z">${[extra, date].filter(Boolean).join(" · ")}</div></div>`;
+    });
+    root.innerHTML = head(streak) + `
+      <div class="schalter" role="group" aria-label="${this._t("records")}">
+        ${sports.map(([id]) => `<button type="button" data-s="${id}" aria-pressed="${id === this._sport}">${this._t(`sport_${id}`)}</button>`).join("")}
+      </div>
+      <div class="werte">${tiles.join("")}</div>`;
+    root.querySelectorAll("[data-s]").forEach((b) => b.addEventListener("click", () => { this._sport = b.dataset.s; this._render(); }));
+    root.querySelectorAll("[data-e]").forEach((tile) => {
+      // Wie bei Kacheln von Home Assistant: Verlauf und Attribute des Sensors
+      const open = () => this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: tile.dataset.e }, bubbles: true, composed: true }));
+      tile.addEventListener("click", open);
+      tile.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
+    });
+  }
+}
+
 if (!customElements.get("ha-training-card")) {
   customElements.define("ha-training-card", HaTrainingCard);
   window.customCards = window.customCards || [];
@@ -1028,6 +1129,17 @@ if (!customElements.get("ha-training-card")) {
     type: "ha-training-card",
     name: "Training",
     description: "Training der Apple Watch: Kennzahlen, Route nach Tempo oder Puls, Verlauf und Kilometer.",
+    preview: false,
+  });
+}
+
+if (!customElements.get("ha-training-records-card")) {
+  customElements.define("ha-training-records-card", HaTrainingRecordsCard);
+  window.customCards = window.customCards || [];
+  window.customCards.push({
+    type: "ha-training-records-card",
+    name: "Training: Bestleistungen",
+    description: "Bestleistungen je Sportart (längste Distanz, schnellster Kilometer, Höhenmeter) und Trainingsserie.",
     preview: false,
   });
 }
