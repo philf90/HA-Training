@@ -14,7 +14,7 @@ dieser Integration. Home Assistant speichert die Trainings privat, zeigt das
 letzte Training und die Woche als Sensoren und meldet neue Trainings als
 Ereignis. Die mitgelieferte Karte zeichnet die Route auf einer Karte, nach
 Tempo oder Puls eingefärbt, mit gekoppeltem Verlauf und Kilometer-Balken.
-Version 0.1.18.
+Version 0.1.19.
 
 ## Inhalt
 
@@ -481,8 +481,9 @@ color_by: speed      # oder heart_rate
   Diagramme mit gemeinsamer Zeitachse; Tippen in ein Diagramm oder auf die
   Route zeigt dieselbe Stelle überall.
 - Unterkarte „Kilometer“ mit den Kilometer-Splits von Apple: ein Balken je
-  Kilometer, die Höhe ist das Tempo (der angefangene letzte Kilometer ist
-  schmaler), der schnellste ist hervorgehoben. Darüber schnellster und
+  Kilometer, die Höhe ist das Tempo von Apple wie in der Tabelle (der
+  angefangene letzte Kilometer ist schmaler), der schnellste ist
+  hervorgehoben. Darüber schnellster und
   langsamster ganzer Kilometer (zu Fuß min/km, beim Radfahren km/h). Bis 12
   Kilometer steht der Wert über jedem Balken, darüber nur die Beschriftung
   der Achse im Abstand der Kilometer-Marken. Ein Tipp auf einen Balken zeigt
@@ -582,6 +583,10 @@ freigegebene Konten nur den Teil außerhalb der Zone.
 HACS zeigt neue Versionen als Update an. Nach dem Herunterladen Home Assistant
 neu starten, danach einmal die Seite neu laden, in der Companion App den
 Frontend-Cache zurücksetzen.
+
+**Update auf 0.1.19:** keine Migration. Die Kilometer-Balken zeigen das
+Tempo von Apple wie die Tabelle (0.1.18 rechnete es aus der auf ganze
+Sekunden gerundeten Zeit, z. B. 94,7 statt 95,4 km/h).
 
 **Update auf 0.1.18:** keine Migration, nichts am Speicher geändert. Die
 Karte „Training“ zeigt Verlauf und Kilometer in eigenen Unterkarten, die
@@ -693,7 +698,9 @@ geht ohne Backup, dann prüft der Webhook den Token aber nicht mehr.
 
 ## Teststand
 
-- **0.1.x:** 288 automatische Tests. 0.1.18: Kilometer-Balken (Werte bis 12
+- **0.1.x:** 290 automatische Tests. 0.1.19: Balken mit dem Tempo von Apple
+  wie die Tabelle (Rückfall auf Strecke durch Zeit), min/km zu Fuß weiter aus
+  der Zeit. 0.1.18: Kilometer-Balken (Werte bis 12
   Kilometer, Achse bei langen Touren, schnellster und langsamster ganzer
   Kilometer, km/h beim Rad), Tabelle zu bis zum Tipp und ohne Neuzeichnen der
   Karte, Tipp auf einen Balken zeigt die Mitte des Kilometers, Filter nach
