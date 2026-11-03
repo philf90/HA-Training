@@ -43,7 +43,7 @@
           "keep_details": "Ältere Trainings behalten ihre Zusammenfassung; Route und Verläufe werden gelöscht. Eine Stunde Gehen mit einem GPS-Punkt pro Sekunde braucht rund 170 KB.",
           "require_token": "Lehnt Aufrufe ohne den Header oben ab (HTTP 401). Erst einschalten, wenn der Header in Health Auto Export eingetragen ist.",
           "route_users": "Administratoren sehen Route, Verläufe und den GPX-Export immer. Andere Konten sehen nur die Zusammenfassung (dieselben Werte wie die Sensoren), außer sie sind hier ausgewählt.",
-          "privacy_radius": "Anfang und Ende der Route innerhalb dieses Radius um den Standort von Home Assistant (zone.home) zeigt die Karte nicht. 0 = aus. Die gespeicherte Route bleibt vollständig; Administratoren bekommen sie im GPX-Export weiter ganz, andere Konten nur den Teil außerhalb der Zone."
+          "privacy_radius": "Jeder Teil der Route innerhalb dieses Radius um den Standort von Home Assistant (zone.home) ist in der Karte ausgeblendet: Anfang, Ende und Durchfahrten dazwischen. 0 = aus. Die gespeicherte Route bleibt vollständig; Administratoren bekommen sie im GPX-Export weiter ganz, andere Konten nur die Teile außerhalb der Zone."
         }
       }
     }

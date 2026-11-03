@@ -14,7 +14,7 @@ dieser Integration. Home Assistant speichert die Trainings privat, zeigt das
 letzte Training und die Woche als Sensoren und meldet neue Trainings als
 Ereignis. Die mitgelieferte Karte zeichnet die Route auf einer Karte, nach
 Tempo oder Puls eingefärbt, mit gekoppeltem Verlauf und Kilometer-Tabelle.
-Version 0.1.13.
+Version 0.1.14.
 
 ## Inhalt
 
@@ -471,19 +471,22 @@ geht ohne Backup, dann prüft der Webhook den Token aber nicht mehr.
   die Route nicht freigegeben ist. Dieselben Werte zeigen auch die Sensoren;
   Home Assistant kennt keine Rechte je Entität.
 - **Schutzzone um Zuhause** (seit 0.1.13, unter „Konfigurieren“, in Metern,
-  0 = aus, bis 2000): Anfang und Ende der Route innerhalb dieses Radius um den
-  Standort von Home Assistant (`zone.home`) liefert die Integration nicht an
-  die Karte, für alle Konten. Gekürzt wird in Home Assistant, die Koordinaten
-  im Kreis erreichen den Browser nicht. Der Kartenausschnitt richtet sich nach
-  der sichtbaren Route; liegt Zuhause nahe daran, kann es im Ausschnitt
-  trotzdem zu sehen sein, ohne dass die Route dorthin führt. An den Rändern steht „Schutzzone“ statt Start und Ziel, Kilometer
-  und Distanz bleiben richtig. Die gespeicherte Route bleibt vollständig, die
-  Zone lässt sich also jederzeit ändern. Im GPX-Export gilt sie für
-  freigegebene Konten, nicht für Administratoren. Grenzen: Durchquert die Route
-  den Kreis mittendrin, bleibt dieser Teil sichtbar. Der erste sichtbare Punkt
-  liegt am Rand des Kreises; mehrere Routen zusammen verraten so ungefähr
-  seinen Mittelpunkt. Ein größerer Radius macht das ungenauer, aber nicht
-  unmöglich.
+  0 = aus, bis 2000): Kein Punkt der Route innerhalb dieses Radius um den
+  Standort von Home Assistant (`zone.home`) geht an die Karte, für alle
+  Konten. Das gilt für Anfang und Ende und seit 0.1.14 auch für Durchfahrten
+  dazwischen (0.1.13 blendete nur Anfang und Ende aus). Gekürzt wird in Home
+  Assistant, die Koordinaten im Kreis erreichen den Browser nicht. Die Linie
+  ist an jeder Lücke unterbrochen, die Ränder heißen „Schutzzone“ statt Start
+  und Ziel; Kilometer-Marken, Pausen und Puls-Max aus dem Kreis erscheinen
+  nicht. Kilometer und Distanz bleiben richtig, weil die Integration die
+  ausgeblendeten Meter mitschickt. Die gespeicherte Route bleibt vollständig,
+  die Zone lässt sich also jederzeit ändern. Im GPX-Export gilt sie für
+  freigegebene Konten (jede Lücke beginnt ein neues Segment), nicht für
+  Administratoren. Grenzen: An jeder Lücke liegt ein sichtbarer Punkt am Rand
+  des Kreises; mehrere Routen zusammen verraten so ungefähr seinen
+  Mittelpunkt. Ein größerer Radius macht das ungenauer, aber nicht unmöglich.
+  Der Kartenausschnitt richtet sich nach der sichtbaren Route; liegt Zuhause
+  nahe daran, kann es im Ausschnitt trotzdem zu sehen sein.
 - Die Diagnose enthält weder die Webhook-ID noch den Token noch Koordinaten,
   von den Details nur Anzahlen. Ins Log schreibt die Integration keines der
   beiden Geheimnisse.
@@ -530,7 +533,9 @@ geht ohne Backup, dann prüft der Webhook den Token aber nicht mehr.
 
 ## Teststand
 
-- **0.1.x:** 228 automatische Tests. 0.1.13: Schutzzone (Anfang und Ende
+- **0.1.x:** 236 automatische Tests. 0.1.14: Durchfahrten durch die
+  Schutzzone ausgeblendet (mehrere Lücken, Meter je Lücke, Linie getrennt,
+  GPX-Segmente, keine Marken aus der Lücke). 0.1.13: Schutzzone (Anfang und Ende
   gekürzt, Mitte sichtbar, ganz im Kreis leer, GPX für Admins ganz, für
   freigegebene Konten gekürzt, Kilometer, Pausen und Marken in der Karte),
   feste Fehlercodes 400/401/413. 0.1.12: Sportart aus deutschen und

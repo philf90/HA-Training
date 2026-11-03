@@ -65,11 +65,16 @@ def build_gpx(summary: dict[str, Any], detail: dict[str, Any]) -> str | None:
         f"    <name>{escape(name)}</name>",
         "    <trkseg>",
     ]
+    # Luecken der Schutzzone (privacy.py) beginnen immer ein neues Segment,
+    # auch wenn die Durchfahrt kuerzer als GAP_S war
+    zone_breaks = {
+        int(gap[0]) for gap in (detail.get("privacy") or {}).get("gaps") or []
+    }
     h = 0
     last_t: int | None = None
-    for row in route:
+    for index, row in enumerate(route):
         t, lat, lon = int(row[col["t"]]), row[col["lat"]], row[col["lon"]]
-        if last_t is not None and t - last_t > GAP_S:
+        if last_t is not None and (t - last_t > GAP_S or index in zone_breaks):
             lines += ["    </trkseg>", "    <trkseg>"]
         last_t = t
         while h + 1 < len(hr_rows) and hr_rows[h + 1][hr_t] <= t:
