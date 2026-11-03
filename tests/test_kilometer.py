@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant
 
 from .conftest import TZ, payload, post, workout
 from .test_karte import js
+from .test_rekorde import _records_card
 
 CARD = r"""
 (() => {
@@ -264,45 +265,29 @@ async def test_websocket_sport_filter(
     assert (await ws.receive_json())["success"] is False
 
 
-EDITOR = r"""
+FORM = r"""
 (() => {
-  globalThis.CustomEvent = class { constructor(type, init) { this.type = type; Object.assign(this, init); } };
-  const forms = [];
-  globalThis.document = { createElement: (tag) => { const el = { tag, listeners: {}, addEventListener(t, fn) { this.listeners[t] = fn; } }; forms.push(el); return el; } };
-  const editor = new CLS();
-  editor.appendChild = () => {};
-  const events = [];
-  editor.dispatchEvent = (e) => events.push(e.detail.config);
-  editor.hass = { language: "de", locale: { language: "de" } };
-  editor.setConfig(CONFIG);
-  const form = forms.find((f) => f.tag === "ha-form");
-  const labels = form.schema.map((f) => form.computeLabel(f));
-  form.listeners["value-changed"]({ detail: { value: VALUE } });
-  return { names: form.schema.map((f) => f.name), data: form.data, labels, events, tag: HaTrainingCard.getConfigElement().tag, recTag: HaTrainingRecordsCard.getConfigElement().tag };
+  globalThis.document = { querySelector: (sel) => (sel === "html" ? { getAttribute: () => LANG } : null) };
+  const form = CLS.getConfigForm();
+  return {
+    names: form.schema.map((f) => f.name),
+    options: form.schema.map((f) => (f.selector.select ? f.selector.select.options.map((o) => o.value) : null)),
+    optionLabels: form.schema.map((f) => (f.selector.select ? f.selector.select.options.map((o) => o.label) : null)),
+    labels: form.schema.map((f) => form.computeLabel(f)),
+    element: typeof CLS.getConfigElement,
+  };
 })()
 """
 
 
-def _editor(cls="HaTrainingCardEditor", config=None, value=None):
-    return js(
-        EDITOR.replace("CLS", cls)
-        .replace("CONFIG", json.dumps(config or {"type": "custom:ha-training-card"}))
-        .replace("VALUE", json.dumps(value or {}))
-    )
+def _form(cls="HaTrainingCard", lang="de"):
+    return js(FORM.replace("CLS", cls).replace("LANG", json.dumps(lang)))
 
 
-def test_training_card_editor():
-    got = _editor(
-        value={
-            "workout": "latest",
-            "color_by": "heart_rate",
-            "sport": "all",
-            "tile_url": "",
-            "tile_attribution": "",
-        }
-    )
-    assert got["tag"] == "ha-training-card-editor"
-    assert got["recTag"] == "ha-training-records-card-editor"
+def test_training_card_form():
+    got = _form()
+    # Formular von Home Assistant (getConfigForm), kein eigenes Element
+    assert got["element"] == "undefined"
     assert got["names"] == [
         "workout",
         "color_by",
@@ -310,46 +295,40 @@ def test_training_card_editor():
         "tile_url",
         "tile_attribution",
     ]
-    assert got["data"]["workout"] == "latest" and got["data"]["sport"] == "all"
-    assert got["labels"][1] == "Route einfärben nach"
-    # Leere Felder fallen heraus, der Rest bleibt
-    assert got["events"] == [
-        {
-            "type": "custom:ha-training-card",
-            "workout": "latest",
-            "color_by": "heart_rate",
-        }
+    assert got["options"][1] == ["speed", "heart_rate"]
+    assert got["options"][2] == ["all", "foot", "cycling", "swimming", "other"]
+    assert got["optionLabels"][2] == [
+        "Alle",
+        "Zu Fuß",
+        "Radfahren",
+        "Schwimmen",
+        "Sonstige",
     ]
+    assert got["labels"][1] == "Route einfärben nach"
+    # Sprache der Oberflaeche; unbekannte Sprache und keine Angabe: Englisch
+    assert _form(lang="en")["labels"][1] == "Colour route by"
+    assert _form(lang="fr")["labels"][1] == "Colour route by"
+    assert _form(lang=None)["labels"][1] == "Colour route by"
 
 
-def test_records_card_editor():
-    got = _editor(
-        cls="HaTrainingRecordsCardEditor",
-        config={"type": "custom:ha-training-records-card", "sport": "cycling"},
-        value={"sport": "auto"},
-    )
+def test_records_card_form():
+    got = _form("HaTrainingRecordsCard")
+    assert got["element"] == "undefined"
     assert got["names"] == ["sport"]
-    assert got["data"] == {"sport": "cycling"}
+    assert got["options"] == [["auto", "foot", "cycling", "swimming"]]
     assert got["labels"] == ["Sportart beim Öffnen"]
-    assert got["events"] == [{"type": "custom:ha-training-records-card"}]
+
+
+def test_editor_values_mean_no_option():
+    # Der Editor schreibt „all“ bzw. „auto“ in die Konfiguration: wie ohne Option
+    assert _filter(config={"sport": "all"})["filter"] is None
+    # „auto“ (aus dem Editor) wie ohne Option: erste Sportart mit Bestleistung
+    assert (
+        'data-s="foot" aria-pressed="true"'
+        in _records_card(config={"sport": "auto"})["html1"]
+    )
 
 
 @pytest.mark.parametrize("cls", ["HaTrainingCard", "HaTrainingRecordsCard"])
 def test_grid_options(cls):
     assert js(f"new {cls}().getGridOptions()") == {"columns": 12, "min_columns": 6}
-
-
-def test_editor_defaults_show_all_and_auto():
-    # Ohne `sport` oder mit unbekanntem Wert zeigt das Feld „Alle“ bzw. „Automatisch“
-    assert (
-        _editor(config={"type": "custom:ha-training-card", "sport": "tennis"})["data"][
-            "sport"
-        ]
-        == "all"
-    )
-    assert _editor(cls="HaTrainingRecordsCardEditor", config={"type": "x"})["data"] == {
-        "sport": "auto"
-    }
-    # Eine Sportart bleibt in der Konfiguration stehen
-    got = _editor(value={"sport": "swimming"})
-    assert got["events"] == [{"type": "custom:ha-training-card", "sport": "swimming"}]

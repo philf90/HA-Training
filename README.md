@@ -434,9 +434,11 @@ color_by: speed      # oder heart_rate
   die letzten 30 ist. Gibt es die ID nicht (mehr), zeigt die Karte das neueste
   Training und einen Hinweis.
 - `sport` stellt den Filter nach Sportart beim Öffnen ein (siehe unten);
-  ein unbekannter Wert wird ignoriert.
+  `all` und ein unbekannter Wert bedeuten „Alle“.
 - Alle Optionen lassen sich seit 0.1.18 auch im visuellen Editor des
-  Dashboards einstellen, ohne YAML.
+  Dashboards einstellen, ohne YAML. Das Formular zeichnet Home Assistant
+  selbst (`getConfigForm`); gewählte Werte stehen danach in der
+  Konfiguration, auch „Alle“ als `sport: all`.
 - `tile_url` muss mit `https://` beginnen und `{z}`, `{x}` und `{y}` enthalten,
   sonst nimmt die Karte OpenStreetMap. `tile_attribution` erscheint als Text
   unten rechts in der Karte (Quellenangabe des Anbieters).
@@ -507,7 +509,9 @@ type: custom:ha-training-records-card
 sport: foot          # Start: foot, cycling oder swimming (optional)
 ```
 
-Die Option lässt sich auch im visuellen Editor einstellen.
+Die Option lässt sich auch im visuellen Editor einstellen; „Automatisch“
+steht dann als `sport: auto` in der Konfiguration und bedeutet dasselbe wie
+ohne Option.
 
 - Kopf mit Pokal, Titel und der Trainingsserie („Serie 1 Tag · längste 3
   Tage“).
@@ -695,8 +699,9 @@ geht ohne Backup, dann prüft der Webhook den Token aber nicht mehr.
   Karte, Tipp auf einen Balken zeigt die Mitte des Kilometers, Filter nach
   Sportart (nur ab zwei, Vorgabe aus `sport`, lädt das neueste Training,
   Hinweis ohne Treffer), `ha_training/workouts` mit Sportart und Anzahl je
-  Sportart, visueller Editor beider Karten („Alle“ und „Automatisch“ fallen
-  aus der Konfiguration). 0.1.17: Karte „Bestleistungen“ (nur
+  Sportart, visueller Editor beider Karten (Formular von Home Assistant,
+  Beschriftung in der Sprache der Oberfläche, `all`/`auto` wie ohne Option).
+  0.1.17: Karte „Bestleistungen“ (nur
   Sportarten mit Bestleistung, Rückfall, km/h beim Rad, Tipp öffnet den
   Sensor nur mit Entitäts-ID und nur per Klick, Enter oder Leertaste, Neuladen
   bei Änderung), Karte „Training“ ohne Abruf der Bestleistungen. 0.1.16:

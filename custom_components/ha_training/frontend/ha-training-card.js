@@ -22,7 +22,7 @@
  *   tile_url: https://...{z}/{x}/{y}.png   # eigener Kachelserver (Standard OSM)
  *   tile_attribution: ...  # Quellenangabe dazu, als Text
  *   sport: cycling         # Filter vorstellen: foot, cycling, swimming, other
- * Alle Optionen gibt es auch im visuellen Editor (ha-training-card-editor).
+ * Alle Optionen gibt es auch im visuellen Editor (getConfigForm).
  *
  * Leaflet 1.9.4 liefert die Integration unter /ha_training/leaflet/ mit
  * (BSD-2-Lizenz, siehe leaflet/LICENSE). Kartenkacheln: OpenStreetMap, im
@@ -315,8 +315,8 @@ class HaTrainingCard extends HTMLElement {
     return { columns: 12, min_columns: 6 };
   }
 
-  static getConfigElement() {
-    return document.createElement("ha-training-card-editor");
+  static getConfigForm() {
+    return trainingCardForm();
   }
 
   set hass(hass) {
@@ -1152,8 +1152,8 @@ class HaTrainingRecordsCard extends HaTrainingCard {
     return {};
   }
 
-  static getConfigElement() {
-    return document.createElement("ha-training-records-card-editor");
+  static getConfigForm() {
+    return recordsCardForm();
   }
 
   setConfig(config) {
@@ -1276,10 +1276,11 @@ class HaTrainingRecordsCard extends HaTrainingCard {
   }
 }
 
-// Visueller Editor (V5) fuer beide Karten: ha-form von Home Assistant mit
-// Auswahlfeldern. Leere Felder und „Alle“/„Automatisch“ fallen aus der
-// Konfiguration heraus, damit sie die Standardwerte der Karte behalten.
-const EDITOR_UNSET = ["", "all", "auto"];
+// Visueller Editor (V5) fuer beide Karten ueber getConfigForm(): Home
+// Assistant zeichnet das Formular selbst (Doku „Card editor and picker“). Die
+// Werte landen unveraendert in der Konfiguration; „all“ und „auto“ bedeuten
+// dasselbe wie ohne Option. Beschriftung in der Sprache der Oberflaeche
+// (Home Assistant setzt lang am <html>-Element).
 const EDITOR_TEXT = {
   de: {
     workout: "Training (latest = das neueste, sonst die ID)", color_by: "Route einfärben nach", sport: "Sportart",
@@ -1295,84 +1296,33 @@ const EDITOR_TEXT = {
   },
 };
 
-class HaTrainingCardEditor extends HTMLElement {
-  setConfig(config) {
-    this._config = { ...(config || {}) };
-    this._update();
-  }
+function editorText(key) {
+  const lang = (globalThis.document?.querySelector?.("html")?.getAttribute?.("lang") || "en").slice(0, 2);
+  return (EDITOR_TEXT[lang] || EDITOR_TEXT.en)[key] ?? key;
+}
 
-  set hass(hass) {
-    this._hass = hass;
-    this._update();
-  }
+function editorSelect(values) {
+  return { select: { mode: "dropdown", options: values.map(([value, key]) => ({ value, label: editorText(key) })) } };
+}
 
-  _text(key) {
-    const lang = (this._hass?.locale?.language || this._hass?.language || "en").slice(0, 2);
-    return (EDITOR_TEXT[lang] || EDITOR_TEXT.en)[key] ?? key;
-  }
-
-  _select(values) {
-    return { select: { mode: "dropdown", options: values.map(([value, key]) => ({ value, label: this._text(key) })) } };
-  }
-
-  _schema() {
-    return [
+function trainingCardForm() {
+  return {
+    schema: [
       { name: "workout", selector: { text: {} } },
-      { name: "color_by", selector: this._select([["speed", "speed"], ["heart_rate", "heart_rate"]]) },
-      { name: "sport", selector: this._select([["all", "all"], ...SPORT_GROUPS.map((g) => [g, g])]) },
+      { name: "color_by", selector: editorSelect([["speed", "speed"], ["heart_rate", "heart_rate"]]) },
+      { name: "sport", selector: editorSelect([["all", "all"], ...SPORT_GROUPS.map((g) => [g, g])]) },
       { name: "tile_url", selector: { text: {} } },
       { name: "tile_attribution", selector: { text: {} } },
-    ];
-  }
-
-  _data() {
-    const c = this._config || {};
-    return { workout: c.workout ?? "latest", color_by: c.color_by ?? "speed", sport: SPORT_GROUPS.includes(c.sport) ? c.sport : "all", tile_url: c.tile_url ?? "", tile_attribution: c.tile_attribution ?? "" };
-  }
-
-  _label(name) {
-    return this._text(name);
-  }
-
-  _update() {
-    if (!this._config) return;
-    if (!this._form) {
-      this._form = document.createElement("ha-form");
-      this._form.computeLabel = (field) => this._label(field.name);
-      this._form.addEventListener("value-changed", (e) => this._changed(e.detail.value));
-      this.appendChild(this._form);
-    }
-    this._form.hass = this._hass;
-    this._form.schema = this._schema();
-    this._form.data = this._data();
-  }
-
-  _changed(value) {
-    const config = { ...this._config, ...value };
-    for (const key of Object.keys(value)) {
-      if (config[key] == null || EDITOR_UNSET.includes(config[key])) delete config[key];
-    }
-    this._config = config;
-    this.dispatchEvent(new CustomEvent("config-changed", { detail: { config }, bubbles: true, composed: true }));
-  }
+    ],
+    computeLabel: (field) => editorText(field.name),
+  };
 }
 
-class HaTrainingRecordsCardEditor extends HaTrainingCardEditor {
-  _schema() {
-    return [{ name: "sport", selector: this._select([["auto", "auto"], ["foot", "foot"], ["cycling", "cycling"], ["swimming", "swimming"]]) }];
-  }
-
-  _data() {
-    return { sport: ["foot", "cycling", "swimming"].includes(this._config?.sport) ? this._config.sport : "auto" };
-  }
-
-  _label(name) {
-    return this._text(name === "sport" ? "start_sport" : name);
-  }
-}
-
-for (const [tag, cls] of [["ha-training-card-editor", HaTrainingCardEditor], ["ha-training-records-card-editor", HaTrainingRecordsCardEditor]]) {
-  if (!customElements.get(tag)) customElements.define(tag, cls);
+function recordsCardForm() {
+  return {
+    schema: [{ name: "sport", selector: editorSelect([["auto", "auto"], ["foot", "foot"], ["cycling", "cycling"], ["swimming", "swimming"]]) }],
+    computeLabel: (field) => editorText(field.name === "sport" ? "start_sport" : field.name),
+  };
 }
 
 if (!customElements.get("ha-training-card")) {
