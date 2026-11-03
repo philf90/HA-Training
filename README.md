@@ -14,7 +14,7 @@ dieser Integration. Home Assistant speichert die Trainings privat, zeigt das
 letzte Training und die Woche als Sensoren und meldet neue Trainings als
 Ereignis. Die mitgelieferte Karte zeichnet die Route auf einer Karte, nach
 Tempo oder Puls eingefärbt, mit gekoppeltem Verlauf und Kilometer-Tabelle.
-Version 0.1.15.
+Version 0.1.16.
 
 ## Inhalt
 
@@ -340,8 +340,9 @@ Seit 0.1.15. Aus den Zusammenfassungen aller gespeicherten Trainings, auch
   fällt also morgens vor dem Training noch nicht auf 0. Dazu die längste
   Serie.
 
-Die Sensoren tragen als Attribute `workout_id`, `name` und `start` des
-Trainings. Wird ein Training gelöscht, gilt die nächstbeste Leistung. Bei
+Die Karte „Training“ zeigt sie seit 0.1.16 in einem eigenen Abschnitt (siehe
+[Karte „Training“](#karte-training)). Die Sensoren tragen als Attribute
+`workout_id`, `name` und `start` des Trainings. Wird ein Training gelöscht, gilt die nächstbeste Leistung. Bei
 Gleichstand bleibt das frühere Training der Rekordhalter.
 
 Das Ereignis `event.training_neue_bestleistung` löst aus, wenn ein neues
@@ -425,6 +426,7 @@ color_by: speed      # oder heart_rate
 # optional, eigener Kachelserver statt OpenStreetMap:
 # tile_url: https://tiles.example.org/{z}/{x}/{y}.png
 # tile_attribution: © Beispiel-Karten
+# records: false     # Abschnitt „Bestleistungen“ ausblenden
 ```
 
 - `workout` mit einer ID lädt genau dieses Training, auch wenn es älter als
@@ -449,6 +451,14 @@ color_by: speed      # oder heart_rate
   Kopf und zwei Kacheln: Schrittfrequenz nur zu Fuß (auf dem Rad zählt die
   Uhr Armbewegungen), sonst Temperatur. Beim Radfahren steht unter dem Tempo
   der Höchstwert statt min/km, und die Kilometer-Tabelle zeigt km/h vorne.
+- Abschnitt „Bestleistungen“ (seit 0.1.16) unter der Kilometer-Tabelle: die
+  Bestleistungen aus [Bestleistungen](#bestleistungen) mit Wert und Datum,
+  beim schnellsten Kilometer zu Fuß als min/km, beim Radfahren als km/h mit
+  min/km darunter, dazu laufende und längste Trainingsserie. Ein Tipp auf das
+  Datum zeigt das Training; ist es gerade gezeigt, steht das Datum fett ohne
+  Unterstreichung. Leistungen ohne Wert (z. B. noch nie geschwommen) fehlen.
+  Die Werte kommen über `ha_training/records` und gelten für alle angemeldeten
+  Konten wie die Liste (keine Route).
 - Route auf OpenStreetMap, nach Tempo oder Puls in fünf Stufen eingefärbt.
   Die Grenzen kommen aus dem jeweiligen Training: Tempo unter 1 km/h ist
   „Stopp“, der Rest in Vierteln der Zeit in Bewegung; Puls in Fünfteln der
@@ -638,7 +648,10 @@ geht ohne Backup, dann prüft der Webhook den Token aber nicht mehr.
 
 ## Teststand
 
-- **0.1.x:** 264 automatische Tests. 0.1.15: Bestleistungen je Sportart
+- **0.1.x:** 269 automatische Tests. 0.1.16: Abschnitt „Bestleistungen“ in
+  der Karte (Zeilen nur mit Wert, km/h beim Rad, Markierung, Einzahl/Mehrzahl,
+  `records: false`, Tipp zeigt das Training), `ha_training/records` auch für
+  Konten ohne Adminrechte. 0.1.15: Bestleistungen je Sportart
   (ganze Kilometer, Gleichstand, Löschen), Serien nach Ortszeit, Ereignis nur
   für neue Trainings mit Vorgänger-Rekord, Nachtrag des schnellsten
   Kilometers, Langzeitstatistik mit echtem Recorder (Monate, Wochen mit
