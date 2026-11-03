@@ -39,7 +39,7 @@
  * damit sie zu den Splits passen.
  */
 
-const VERSION = "0.1.18";
+const VERSION = "0.1.19";
 const LEAFLET = "/ha_training/leaflet";
 const OSM_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>';
@@ -788,7 +788,9 @@ class HaTrainingCard extends HTMLElement {
     return (this._detail?.splits || []).map((sp, i) => {
       const from = sum;
       sum += sp.distance_m || 0;
-      const speed = sp.distance_m && sp.active_s ? (sp.distance_m / sp.active_s) * 3.6 : sp.speed_kmh;
+      // Tempo von Apple wie in der Tabelle; selbst gerechnet nur, wenn es fehlt
+      // (active_s ist auf ganze Sekunden gerundet: bei 38 s bis 1,3 % daneben)
+      const speed = sp.speed_kmh > 0 ? sp.speed_kmh : (sp.distance_m && sp.active_s ? (sp.distance_m / sp.active_s) * 3.6 : null);
       const pace = sp.distance_m ? sp.active_s / (sp.distance_m / 1000) : null;
       const full = !sp.distance_m || sp.distance_m >= 950;
       return { i, sp, from: from / 1000, to: sum / 1000, speed, pace, full };

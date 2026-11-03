@@ -332,3 +332,42 @@ def test_editor_values_mean_no_option():
 @pytest.mark.parametrize("cls", ["HaTrainingCard", "HaTrainingRecordsCard"])
 def test_grid_options(cls):
     assert js(f"new {cls}().getGridOptions()") == {"columns": 12, "min_columns": 6}
+
+
+def test_bars_use_apple_speed_like_table():
+    # 0.1.19: Live 03.11. zeigte der Balken 94,7 km/h (1000 m / 38 s), die
+    # Tabelle Apples 95,4 km/h. active_s ist auf ganze Sekunden gerundet, der
+    # Balken nimmt deshalb wie die Tabelle das Tempo von Apple.
+    splits = [
+        {**_split(1000, 72, 0), "speed_kmh": 50.1},
+        {**_split(1000, 38, 72), "speed_kmh": 95.4},
+        {**_split(1000, 535, 110), "speed_kmh": 6.73},
+    ]
+    got = _render(splits, sport="cycling", action="handlers.tabelle()")
+    html = got["closed"]
+    assert (
+        '<span class="v">95,4</span>' in html and '<span class="v">50,1</span>' in html
+    )
+    assert "schnellster km 2: 95,4 km/h · langsamster km 3: 6,7 km/h" in html
+    assert 'aria-label="Abschnitt 2 km: 95,4 km/h"' in html
+    # Tabelle und Balken nennen denselben Wert
+    assert "95,4 <small>km/h</small>" in got["place"]
+    # Ohne Tempo von Apple: aus Strecke und Zeit
+    assert (
+        '<span class="v">94,7</span>'
+        in _render([_split(1000, 38)], sport="cycling")["closed"]
+    )
+
+
+def test_foot_bars_keep_pace_from_time():
+    # Zu Fuss bleibt min/km aus der Zeit (wie in der Tabelle), die Hoehe des
+    # Balkens folgt dem Tempo von Apple
+    splits = [
+        {**_split(1000, 600, 0), "speed_kmh": 6.2},
+        {**_split(1000, 540, 600), "speed_kmh": 6.5},
+    ]
+    html = _render(splits)["closed"]
+    assert (
+        '<span class="v">10:00</span>' in html and '<span class="v">9:00</span>' in html
+    )
+    assert "schnellster km 2: 9:00 min/km" in html
