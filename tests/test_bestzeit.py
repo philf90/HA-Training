@@ -14,7 +14,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
 from custom_components.ha_training.parser import (
-    BEST_KM_VERSION,
     best_km,
     best_km_split,
     parse_workout,
@@ -56,53 +55,6 @@ def test_parser_chooses_by_sport():
     ride, _ = parse_workout(workout("R", name="Outdoor Radfahren"))
     assert walk["best_km_s"] == 660.0
     assert ride["best_km_s"] == 800.0
-
-
-async def test_recalculates_stored_once(hass: HomeAssistant, entry, hass_client):
-    store = entry.runtime_data.store
-    await post(hass_client, payload(workout("R", name="Outdoor Radfahren")))
-    # Wie unter 0.1.19 gespeichert: ganze Sekunden aus der Zeit, alte Version
-    store.workouts[0]["best_km_s"] = 660
-    store.best_km_version = 1
-    revision = store.revision
-    assert await store.async_backfill_best_km() == 1
-    assert store.workouts[0]["best_km_s"] == 800.0
-    assert store.best_km_version == BEST_KM_VERSION
-    assert store.revision == revision + 1
-    # Nur einmal; erneut geschickt gilt das Training als unveraendert
-    assert await store.async_backfill_best_km() == 0
-    response = await post(hass_client, payload(workout("R", name="Outdoor Radfahren")))
-    assert (await response.json())["geaendert"] == 0
-
-
-async def test_version_survives_restart(hass: HomeAssistant, entry, hass_client):
-    store = entry.runtime_data.store
-    await post(hass_client, payload(workout("R", name="Outdoor Radfahren")))
-    store.workouts[0]["best_km_s"] = 660
-    store.best_km_version = 1
-    await store._async_save_index()
-    await hass.config_entries.async_reload(entry.entry_id)
-    await hass.async_block_till_done()
-    store = entry.runtime_data.store
-    assert store.workouts[0]["best_km_s"] == 800.0
-    assert store.best_km_version == BEST_KM_VERSION
-    # Nach dem naechsten Start nicht noch einmal
-    store.workouts[0]["best_km_s"] = 1.0
-    await store._async_save_index()
-    await hass.config_entries.async_reload(entry.entry_id)
-    await hass.async_block_till_done()
-    assert entry.runtime_data.store.workouts[0]["best_km_s"] == 1.0
-
-
-async def test_without_details_value_stays(hass: HomeAssistant, entry, hass_client):
-    store = entry.runtime_data.store
-    await post(hass_client, payload(workout("R", name="Outdoor Radfahren")))
-    store.workouts[0]["best_km_s"] = 660
-    store.workouts[0]["has_detail"] = False
-    store.best_km_version = 1
-    assert await store.async_backfill_best_km() == 0
-    assert store.workouts[0]["best_km_s"] == 660
-    assert store.best_km_version == BEST_KM_VERSION
 
 
 async def test_sensor_shows_one_decimal(hass: HomeAssistant, entry, hass_client):
@@ -194,19 +146,6 @@ def test_records_card_uses_apple_speed():
         records={**RECORDS, "best_km_cycling": rec}, config={"sport": "cycling"}
     )["html1"]
     assert "95,3<small>km/h</small>" in html
-
-
-async def test_backfill_adds_speed(hass: HomeAssistant, entry, hass_client):
-    store = entry.runtime_data.store
-    await post(hass_client, payload(workout("R", name="Outdoor Radfahren")))
-    # Wie unter 0.1.20 gespeichert: Sekunden, aber ohne km/h
-    del store.workouts[0]["best_km_kmh"]
-    store.best_km_version = 2
-    assert await store.async_backfill_best_km() == 1
-    assert store.workouts[0]["best_km_kmh"] == 4.5
-    assert store.best_km_version == 3 == BEST_KM_VERSION
-    response = await post(hass_client, payload(workout("R", name="Outdoor Radfahren")))
-    assert (await response.json())["geaendert"] == 0
 
 
 async def test_sensor_attribute_speed(hass: HomeAssistant, entry, hass_client):

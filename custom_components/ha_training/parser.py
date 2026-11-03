@@ -343,11 +343,6 @@ def parse_splits(
 FULL_KM_M = (950.0, 1050.0)
 
 
-# Version der Rechnung in best_km; storage rechnet gespeicherte Trainings
-# einmal neu, wenn sie sich aendert (2 = 0.1.20, 3 = seit 0.1.21 mit km/h)
-BEST_KM_VERSION = 3
-
-
 def best_km(splits: list[dict[str, Any]], use_speed: bool = False) -> float | None:
     """Schnellster ganzer Kilometer in Sekunden (auf genau 1 km umgerechnet)."""
     return best_km_split(splits, use_speed)[0]

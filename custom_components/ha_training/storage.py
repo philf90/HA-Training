@@ -18,19 +18,93 @@ Loeschen veraendern dieselbe Liste und warten dazwischen auf Dateizugriffe.
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
+from collections.abc import Callable
 from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
-from .const import STORAGE_DETAIL, STORAGE_INDEX, STORAGE_VERSION
+from .const import STORAGE_DETAIL, STORAGE_INDEX, STORAGE_INDEX_MINOR, STORAGE_VERSION
 
+_LOGGER = logging.getLogger(__name__)
 _SAFE = re.compile(r"[^A-Za-z0-9_-]")
 
 
 def _detail_key(entry_id: str, workout_id: str) -> str:
     return f"{STORAGE_DETAIL}.{entry_id}.{_SAFE.sub('_', workout_id)}"
+
+
+class IndexStore(Store[dict[str, Any]]):
+    """Index mit Migration ueber Home Assistant (V3).
+
+    Home Assistant ruft _async_migrate_func beim Laden auf, wenn Version oder
+    Minor-Version der Datei von der des Codes abweichen, und speichert das
+    Ergebnis (helpers/storage.py). Eine hoehere Minor-Version laedt aelterer
+    Code unveraendert; zurueck auf eine aeltere Version geht also ohne Backup.
+
+    1.1 -> 1.2 (0.1.22): Der schnellste Kilometer (best_km_s, best_km_kmh)
+    wird aus den Splits neu gerechnet, wenn er aus einer Rechnung vor 0.1.21
+    stammt; die Marke "best_km_version" aus 0.1.20/0.1.21 entfaellt. Trainings
+    ohne Details behalten ihren Wert, best_km_kmh wird dort None (wie beim
+    Einlesen zu Fuss), damit ein erneut geschicktes Training zu Fuss danach als
+    unveraendert gilt.
+    """
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        key: str,
+        detail_store: Callable[[str], Store[dict[str, Any]]],
+    ) -> None:
+        # serialize_in_event_loop=False: Home Assistant erzeugt das JSON dann im
+        # Executor statt im Event-Loop (helpers/storage.py, Standard ist True).
+        # Erlaubt, weil der Index als Kopie uebergeben wird.
+        super().__init__(
+            hass,
+            STORAGE_VERSION,
+            key,
+            private=True,
+            minor_version=STORAGE_INDEX_MINOR,
+            serialize_in_event_loop=False,
+        )
+        self._detail_store = detail_store
+
+    async def _async_migrate_func(
+        self, old_major_version: int, old_minor_version: int, old_data: Any
+    ) -> dict[str, Any]:
+        if old_major_version != STORAGE_VERSION:
+            raise NotImplementedError
+        data = dict(old_data) if isinstance(old_data, dict) else {}
+        if old_minor_version < 2:
+            await self._migrate_best_km(data)
+        return data
+
+    async def _migrate_best_km(self, data: dict[str, Any]) -> None:
+        from .parser import best_km_split
+        from .sport import CYCLING, sport_of
+
+        # 3 = Rechnung von 0.1.21 (Rad aus Apples Tempo, mit km/h); dann stimmt
+        # der gespeicherte Wert schon und die Details muessen nicht geladen werden
+        current = data.pop("best_km_version", 1) == 3
+        workouts = data.get("workouts")
+        count = 0
+        for workout in workouts if isinstance(workouts, list) else []:
+            if not isinstance(workout, dict):
+                continue
+            if not current and workout.get("has_detail"):
+                detail = await self._detail_store(workout["id"]).async_load() or {}
+                splits = detail.get("splits") if isinstance(detail, dict) else None
+                seconds, kmh = best_km_split(
+                    splits if isinstance(splits, list) else [],
+                    use_speed=sport_of(workout.get("name")) == CYCLING,
+                )
+                workout["best_km_s"] = seconds
+                workout["best_km_kmh"] = kmh
+                count += 1
+            workout.setdefault("best_km_kmh", None)
+        _LOGGER.info("Schnellster Kilometer neu gerechnet: %s Trainings", count)
 
 
 class TrainingStore:
@@ -40,20 +114,11 @@ class TrainingStore:
         self._hass = hass
         self._entry_id = entry_id
         self.keep_details = keep_details
-        # serialize_in_event_loop=False: Home Assistant erzeugt das JSON dann im
-        # Executor statt im Event-Loop (helpers/storage.py, Standard ist True).
-        # Erlaubt, weil der Index als Kopie und die Details als frisch geparste,
-        # danach unveraenderte Daten uebergeben werden.
-        self._index: Store[dict[str, Any]] = Store(
-            hass,
-            STORAGE_VERSION,
-            f"{STORAGE_INDEX}.{entry_id}",
-            private=True,
-            serialize_in_event_loop=False,
+        self._index = IndexStore(
+            hass, f"{STORAGE_INDEX}.{entry_id}", self._detail_store
         )
         self.workouts: list[dict[str, Any]] = []
         self.deleted: set[str] = set()
-        self.best_km_version: int = 1
         # Zaehlt jede Aenderung, die man sehen kann (neu, geaendert, geloescht,
         # Details entfernt). Die Karte laedt neu, wenn er sich aendert; nicht
         # gespeichert, nach einem Neustart beginnt er wieder bei 0.
@@ -63,6 +128,8 @@ class TrainingStore:
         self._lock = asyncio.Lock()
 
     def _detail_store(self, workout_id: str) -> Store[dict[str, Any]]:
+        # Details: frisch geparst und danach unveraendert, deshalb JSON im
+        # Executor (serialize_in_event_loop=False). Ohne Migration bisher.
         return Store(
             self._hass,
             STORAGE_VERSION,
@@ -75,8 +142,6 @@ class TrainingStore:
         data = await self._index.async_load() or {}
         workouts = data.get("workouts")
         self.workouts = workouts if isinstance(workouts, list) else []
-        version = data.get("best_km_version")
-        self.best_km_version = version if isinstance(version, int) else 1
         deleted = data.get("deleted")
         self.deleted = (
             {d for d in deleted if isinstance(d, str)}
@@ -90,7 +155,6 @@ class TrainingStore:
             {
                 "workouts": [dict(w) for w in self.workouts],
                 "deleted": sorted(self.deleted),
-                "best_km_version": self.best_km_version,
             }
         )
 
@@ -197,42 +261,6 @@ class TrainingStore:
             if position >= self.keep_details and workout.get("has_detail"):
                 await self._detail_store(workout["id"]).async_remove()
                 workout["has_detail"] = False
-
-    async def async_backfill_best_km(self) -> int:
-        """Schnellsten Kilometer nachtragen oder neu rechnen (einmalig).
-
-        Fuer Trainings vor 0.1.15 fehlt er; seit 0.1.20 rechnet parser.best_km
-        anders (Rad aus dem Tempo von Apple, Nachkommastellen), seit 0.1.21
-        kommt das Tempo dazu (best_km_kmh); deshalb einmal alle neu, wenn
-        BEST_KM_VERSION gestiegen ist. Nur Trainings, die ihre
-        Details noch haben; fuer aeltere fehlen die Splits, ihr Wert bleibt.
-        Dieselbe Rechnung wie beim Einlesen, damit ein erneut geschicktes
-        Training danach als unveraendert gilt.
-        -> Anzahl neu gerechneter Trainings
-        """
-        from .parser import BEST_KM_VERSION, best_km_split
-        from .sport import CYCLING, sport_of
-
-        async with self._lock:
-            again = self.best_km_version < BEST_KM_VERSION
-            todo = [
-                w
-                for w in self.workouts
-                if w.get("has_detail") and (again or "best_km_s" not in w)
-            ]
-            for workout in todo:
-                detail = await self._detail_store(workout["id"]).async_load() or {}
-                seconds, kmh = best_km_split(
-                    detail.get("splits") or [],
-                    use_speed=sport_of(workout.get("name")) == CYCLING,
-                )
-                workout["best_km_s"] = seconds
-                workout["best_km_kmh"] = kmh
-            if todo or again:
-                self.best_km_version = BEST_KM_VERSION
-                self.revision += 1
-                await self._async_save_index()
-            return len(todo)
 
     async def async_set_keep_details(self, keep: int) -> None:
         async with self._lock:

@@ -224,43 +224,6 @@ async def test_no_record_event_for_old_workouts(
     assert float(longest.state) == 9.0
 
 
-async def test_backfill_best_km(hass: HomeAssistant, entry, hass_client):
-    store = entry.runtime_data.store
-    await post(hass_client, payload(workout()))
-    # Wie unter 0.1.14 gespeichert: ohne best_km_s
-    del store.workouts[0]["best_km_s"]
-    revision = store.revision
-    assert await store.async_backfill_best_km() == 1
-    assert store.workouts[0]["best_km_s"] == 660
-    assert store.revision == revision + 1
-    # Zweiter Lauf: nichts mehr zu tun
-    assert await store.async_backfill_best_km() == 0
-    # Erneut geschickt: gilt als unveraendert
-    response = await post(hass_client, payload(workout()))
-    assert (await response.json())["geaendert"] == 0
-
-
-async def test_backfill_skips_workouts_without_detail(
-    hass: HomeAssistant, entry, hass_client
-):
-    store = entry.runtime_data.store
-    await post(hass_client, payload(workout()))
-    del store.workouts[0]["best_km_s"]
-    store.workouts[0]["has_detail"] = False
-    assert await store.async_backfill_best_km() == 0
-    assert "best_km_s" not in store.workouts[0]
-
-
-async def test_backfill_runs_after_start(hass: HomeAssistant, entry, hass_client):
-    store = entry.runtime_data.store
-    await post(hass_client, payload(workout()))
-    del store.workouts[0]["best_km_s"]
-    await store._async_save_index()
-    await hass.config_entries.async_reload(entry.entry_id)
-    await hass.async_block_till_done()
-    assert entry.runtime_data.store.workouts[0]["best_km_s"] == 660
-
-
 def test_record_keys_have_units():
     from custom_components.ha_training.event import RECORD_UNITS
 

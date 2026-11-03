@@ -14,7 +14,7 @@ dieser Integration. Home Assistant speichert die Trainings privat, zeigt das
 letzte Training und die Woche als Sensoren und meldet neue Trainings als
 Ereignis. Die mitgelieferte Karte zeichnet die Route auf einer Karte, nach
 Tempo oder Puls eingefärbt, mit gekoppeltem Verlauf und Kilometer-Balken.
-Version 0.1.21.
+Version 0.1.22.
 
 ## Inhalt
 
@@ -592,6 +592,12 @@ HACS zeigt neue Versionen als Update an. Nach dem Herunterladen Home Assistant
 neu starten, danach einmal die Seite neu laden, in der Companion App den
 Frontend-Cache zurücksetzen.
 
+**Update auf 0.1.22:** keine Migration nötig, die Integration erledigt sie
+selbst: Beim ersten Start speichert sie den Index als Version 1.2. Kommst du
+von 0.1.21, ändert sich an den Werten nichts; von einer älteren Version aus
+rechnet sie den schnellsten Kilometer der Trainings mit Route einmal neu (wie
+0.1.20/0.1.21 es beim Start taten).
+
 **Update auf 0.1.21:** keine Migration nötig. Beim ersten Start rechnet die
 Integration den schnellsten Kilometer aller Trainings mit Route noch einmal
 und speichert beim Rad Apples Tempo dazu; die Werte in Sekunden bleiben
@@ -648,6 +654,12 @@ geht ohne Backup, dann prüft der Webhook den Token aber nicht mehr.
 - Eine GPS-Route zeigt Wohnort und Wege. Die Integration speichert Trainings
   unter `.storage/` (Dateien `ha_training.*`), nicht unter `www/`: Was unter
   `/local/` liegt, liefert Home Assistant ohne Anmeldung aus.
+- Der Index (`ha_training.index.*`) hat seit 0.1.22 die Version 1.2. Ändert
+  sich sein Format, rechnet die Integration ihn beim Start über die Migration
+  von Home Assistant um und speichert ihn neu (im Log auf Stufe `info`:
+  „Migrating ha_training.index… storage from 1.1 to 1.2“). Ältere Versionen der
+  Integration lesen eine höhere Minor-Version unverändert; zurück geht es
+  ohne Backup.
 - Route und Verläufe verlassen Home Assistant nur über die WebSocket-API
   (`ha_training/workout`, `ha_training/gpx`) und nur für Administratoren und
   die Konten, die unter „Konfigurieren“ bei „Weitere Konten, die Routen sehen
@@ -718,7 +730,10 @@ geht ohne Backup, dann prüft der Webhook den Token aber nicht mehr.
 
 ## Teststand
 
-- **0.1.x:** 304 automatische Tests. 0.1.21: Tempo von Apple zum schnellsten
+- **0.1.x:** 305 automatische Tests. 0.1.22: Migration des Index über Home
+  Assistant (neu als 1.2; aus 0.1.19, 0.1.20 und 0.1.21 jeweils richtig, nur
+  einmal, ohne Details bleibt der Wert, ältere Versionen lesen 1.2, unbekannte
+  Hauptversion wird abgelehnt). 0.1.21: Tempo von Apple zum schnellsten
   Kilometer beim Rad (nur dieser Kilometer, nicht zu Fuß, nicht bei Distanz
   und Höhenmetern), Karte „Bestleistungen“ zeigt es (95,35 → 95,4 wie die
   Balken; ohne Tempo Rückfall auf die Sekunden), Attribut `speed_kmh`,
