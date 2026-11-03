@@ -3,6 +3,9 @@
     "event": {
       "new_workout": {
         "default": "mdi:run"
+      },
+      "new_record": {
+        "default": "mdi:trophy-award"
       }
     },
     "sensor": {
@@ -110,6 +113,33 @@
       },
       "last_week_duration_swimming": {
         "default": "mdi:swim"
+      },
+      "record_distance_foot": {
+        "default": "mdi:trophy"
+      },
+      "record_best_km_foot": {
+        "default": "mdi:timer-star-outline"
+      },
+      "record_elevation_foot": {
+        "default": "mdi:summit"
+      },
+      "record_distance_cycling": {
+        "default": "mdi:trophy"
+      },
+      "record_best_km_cycling": {
+        "default": "mdi:timer-star-outline"
+      },
+      "record_elevation_cycling": {
+        "default": "mdi:summit"
+      },
+      "record_distance_swimming": {
+        "default": "mdi:trophy"
+      },
+      "streak": {
+        "default": "mdi:fire"
+      },
+      "streak_longest": {
+        "default": "mdi:fire-circle"
       }
     }
   },

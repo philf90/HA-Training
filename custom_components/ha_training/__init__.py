@@ -21,10 +21,14 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
-from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.dispatcher import (
+    async_dispatcher_connect,
+    async_dispatcher_send,
+)
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_integration
 
+from . import rekorde
 from .const import (
     CARD,
     CARD_PATH,
@@ -35,11 +39,13 @@ from .const import (
     DEFAULT_KEEP_DETAILS,
     DOMAIN,
     LEAFLET_DIR,
+    SIGNAL_RECORD,
     SIGNAL_UPDATED,
     TITLE,
 )
 from .parser import PayloadError, decode_and_parse
 from .services import async_register_services
+from .statistik import StatisticsUpdater
 from .storage import TrainingStore
 from .websocket import async_register_websocket
 
@@ -55,6 +61,7 @@ class TrainingData:
     """Laufzeitdaten eines Eintrags."""
 
     store: TrainingStore
+    statistics: StatisticsUpdater
 
 
 type TrainingConfigEntry = ConfigEntry[TrainingData]
@@ -118,7 +125,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: TrainingConfigEntry) -> 
         entry.options.get(CONF_KEEP_DETAILS, DEFAULT_KEEP_DETAILS),
     )
     await store.async_load()
-    entry.runtime_data = TrainingData(store)
+    statistics = StatisticsUpdater(hass, store)
+    entry.runtime_data = TrainingData(store, statistics)
 
     async def handle_webhook(
         hass: HomeAssistant, webhook_id: str, request: web.Request
@@ -141,8 +149,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: TrainingConfigEntry) -> 
     )
     entry.async_on_unload(lambda: webhook.async_unregister(hass, webhook_id))
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
+    # Langzeitstatistik (E3) nach jeder Aenderung neu: neue, geaenderte und
+    # geloeschte Trainings schicken alle dieses Signal
+    entry.async_on_unload(
+        async_dispatcher_connect(
+            hass, f"{SIGNAL_UPDATED}_{entry.entry_id}", statistics.schedule
+        )
+    )
+    entry.async_on_unload(statistics.shutdown)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    entry.async_create_background_task(
+        hass, _async_after_start(hass, entry), "ha_training_start"
+    )
     return True
+
+
+async def _async_after_start(hass: HomeAssistant, entry: TrainingConfigEntry) -> None:
+    """Einmal nach dem Start: schnellsten Kilometer nachtragen, Statistik neu."""
+    data = entry.runtime_data
+    if await data.store.async_backfill_best_km():
+        async_dispatcher_send(hass, f"{SIGNAL_UPDATED}_{entry.entry_id}", [])
+    data.statistics.schedule()
 
 
 async def _async_handle_webhook(
@@ -171,9 +198,17 @@ async def _async_handle_webhook(
             )
         return web.json_response({"error": err.error, "fehler": err.text}, status=400)
     store = entry.runtime_data.store
+    before = rekorde.cached(store)
     new, updated, skipped = await store.async_add(parsed)
     if new or updated:
         async_dispatcher_send(hass, f"{SIGNAL_UPDATED}_{entry.entry_id}", new)
+    # Neue Bestleistung (E4) nur durch neue Trainings der letzten 24 Stunden,
+    # nicht durch einen ersten Abgleich mit alten Trainings
+    recent = {w["id"] for w in new if rekorde.is_recent(w)}
+    if recent:
+        records = rekorde.improved(before, rekorde.cached(store), recent)
+        if records:
+            async_dispatcher_send(hass, f"{SIGNAL_RECORD}_{entry.entry_id}", records)
     _LOGGER.debug(
         "Webhook: %s Trainings, %s neu, %s geaendert, %s verworfen, %s geloescht",
         len(parsed),

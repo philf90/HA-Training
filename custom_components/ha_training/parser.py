@@ -336,6 +336,25 @@ def parse_splits(
     return splits
 
 
+# Ein Split zaehlt als ganzer Kilometer, wenn seine Distanz so nahe an 1 km
+# liegt; der letzte, angefangene Kilometer faellt so heraus
+FULL_KM_M = (950.0, 1050.0)
+
+
+def best_km(splits: list[dict[str, Any]]) -> int | None:
+    """Schnellster ganzer Kilometer in Sekunden (auf genau 1 km umgerechnet)."""
+    times = [
+        sp["active_s"] * 1000 / sp["distance_m"]
+        for sp in splits
+        if isinstance(sp, dict)
+        and isinstance(sp.get("distance_m"), (int, float))
+        and FULL_KM_M[0] <= sp["distance_m"] <= FULL_KM_M[1]
+        and isinstance(sp.get("active_s"), (int, float))
+        and sp["active_s"] > 0
+    ]
+    return round(min(times)) if times else None
+
+
 def parse_workout(raw: Any) -> tuple[dict[str, Any], dict[str, Any]]:
     """Ein Training -> (Zusammenfassung, Details)."""
     if not isinstance(raw, dict):
@@ -412,6 +431,9 @@ def parse_workout(raw: Any) -> tuple[dict[str, Any], dict[str, Any]]:
         ),
         "humidity_pct": _round(humidity, 0),
         "pause_s": sum(b - a for a, b in pauses),
+        # Fuer die Bestleistung (E4): die Splits verschwinden mit den Details
+        # nach der Aufbewahrung, die Zusammenfassung bleibt
+        "best_km_s": best_km(splits),
         "route_points": len(route),
         "heart_rate_points": len(heart_rate),
     }

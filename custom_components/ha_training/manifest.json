@@ -2,7 +2,8 @@
   "domain": "ha_training",
   "name": "Training",
   "after_dependencies": [
-    "frontend"
+    "frontend",
+    "recorder"
   ],
   "codeowners": [
     "@philf90"
@@ -19,5 +20,5 @@
   "issue_tracker": "https://github.com/philf90/HA-Training/issues",
   "requirements": [],
   "single_config_entry": true,
-  "version": "0.1.14"
+  "version": "0.1.15"
 }

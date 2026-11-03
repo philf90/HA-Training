@@ -46,6 +46,9 @@ SIGNAL_UPDATED = f"{DOMAIN}_updated"
 
 # Ereignis-Typ der Ereignis-Entitaet "Neues Training".
 EVENT_NEW_WORKOUT = "neues_training"
+# Ereignis-Typ der Ereignis-Entitaet "Neue Bestleistung" (E4) und ihr Signal.
+EVENT_NEW_RECORD = "neue_bestleistung"
+SIGNAL_RECORD = f"{DOMAIN}_record"
 
 # Karte, von der Integration selbst ausgeliefert (siehe __init__.py).
 CARD_PATH = f"/{DOMAIN}"

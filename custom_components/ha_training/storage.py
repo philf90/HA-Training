@@ -57,6 +57,8 @@ class TrainingStore:
         # Details entfernt). Die Karte laedt neu, wenn er sich aendert; nicht
         # gespeichert, nach einem Neustart beginnt er wieder bei 0.
         self.revision = 0
+        # Abgeleitete Werte (z. B. Bestleistungen), gueltig je revision
+        self.cache: dict[str, Any] = {}
         self._lock = asyncio.Lock()
 
     def _detail_store(self, workout_id: str) -> Store[dict[str, Any]]:
@@ -191,6 +193,28 @@ class TrainingStore:
             if position >= self.keep_details and workout.get("has_detail"):
                 await self._detail_store(workout["id"]).async_remove()
                 workout["has_detail"] = False
+
+    async def async_backfill_best_km(self) -> int:
+        """Schnellsten Kilometer fuer Trainings vor 0.1.15 nachtragen (einmalig).
+
+        Nur Trainings, die ihre Details noch haben; fuer aeltere fehlen die
+        Splits. Dieselbe Rechnung wie beim Einlesen (parser.best_km), damit ein
+        erneut geschicktes Training danach als unveraendert gilt.
+        -> Anzahl nachgetragener Trainings
+        """
+        from .parser import best_km
+
+        async with self._lock:
+            todo = [
+                w for w in self.workouts if "best_km_s" not in w and w.get("has_detail")
+            ]
+            for workout in todo:
+                detail = await self._detail_store(workout["id"]).async_load() or {}
+                workout["best_km_s"] = best_km(detail.get("splits") or [])
+            if todo:
+                self.revision += 1
+                await self._async_save_index()
+            return len(todo)
 
     async def async_set_keep_details(self, keep: int) -> None:
         async with self._lock:
