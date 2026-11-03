@@ -332,7 +332,8 @@ def _record_sensor(key: str) -> TrainingSensorDescription:
     _, field, _ = rekorde.RECORDS[key]
     units = {
         "distance_km": (SensorDeviceClass.DISTANCE, UnitOfLength.KILOMETERS, 2),
-        "best_km_s": (SensorDeviceClass.DURATION, UnitOfTime.SECONDS, 0),
+        # Eine Nachkommastelle seit 0.1.20 (Rad aus dem Tempo von Apple)
+        "best_km_s": (SensorDeviceClass.DURATION, UnitOfTime.SECONDS, 1),
         "elevation_up_m": (SensorDeviceClass.DISTANCE, UnitOfLength.METERS, 0),
     }
     device_class, unit, precision = units[field]
