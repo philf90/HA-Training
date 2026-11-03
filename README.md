@@ -203,16 +203,24 @@ was sie in der Zeit nicht schicken konnte, holt **Manual Upload** nach.
 Ein Gerät „Training“ mit diesen Entitäten. Die IDs entstehen aus der Sprache
 der Instanz; in einer deutschen Instanz z. B.:
 
-> **Gerät in einem Bereich:** Hat man das Gerät „Training“ einem Bereich
-> zugeordnet, kann Home Assistant die IDs von Entitäten, die erst danach
-> dazukommen (etwa nach einem Update), mit dem Bereich beginnen lassen. In einer
-> Instanz mit HA 2026.10.4 und dem Bereich „Sonstiges“ hießen die mit 0.1.9 neuen
-> Sensoren `sensor.sonstiges_training_…_letzte_woche`, die älteren weiter
-> `sensor.training_…`. Wer einheitliche IDs möchte, benennt die neuen unter
+> **Gerät in einem Bereich:** Seit Home Assistant 2026.6 beginnt die ID einer
+> neu angelegten Entität mit dem Bereich des Geräts, wenn das Gerät „Training“
+> einem Bereich zugeordnet ist. Vorhandene IDs ändern sich dadurch nicht. In
+> einer Instanz mit HA 2026.10.4 und dem Bereich „Sonstiges“ hießen die mit
+> 0.1.9 und 0.1.12 neuen Sensoren deshalb `sensor.sonstiges_training_…`, die
+> älteren weiter `sensor.training_…`.
+>
+> Verhindern lässt sich das seit 2026.8 unter Einstellungen → System →
+> „Entity ID format“ (Seite `/config/entity-id-format`, nur für
+> Administratoren): Teil „Bereich“ aus dem Format nehmen. Das gilt für alle
+> neuen Entitäten der Instanz, nicht nur für diese Integration. Alternativ das
+> Gerät keinem Bereich zuordnen. Schon vergebene IDs benennt man unter
 > Einstellungen → Geräte & Dienste → Entitäten → Entität öffnen → Zahnrad
 > („Einstellungen“) → „Entitäts-ID“ um, bevor Automationen oder Dashboards sie
-> verwenden. Ab welcher Version und nach welcher
-> Regel Home Assistant den Bereich voranstellt, ist hier nicht geprüft.
+> verwenden. Quellen: Code von HA 2026.10.4 (`helpers/entity_registry.py`,
+> Einstellung `entity_id_parts`, Standard Bereich, übergeordnetes Gerät, Gerät,
+> Entität) und Release Notes 2026.8 („Your entity IDs, your choice“). Nicht
+> geprüft: die deutsche Beschriftung der Seite.
 
 | Entität | Inhalt |
 |---|---|
