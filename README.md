@@ -14,7 +14,7 @@ dieser Integration. Home Assistant speichert die Trainings privat, zeigt das
 letzte Training und die Woche als Sensoren und meldet neue Trainings als
 Ereignis. Die mitgelieferte Karte zeichnet die Route auf einer Karte, nach
 Tempo oder Puls eingefärbt, mit gekoppeltem Verlauf und Kilometer-Balken.
-Version 0.1.19.
+Version 0.1.20.
 
 ## Inhalt
 
@@ -334,7 +334,12 @@ Seit 0.1.15. Aus den Zusammenfassungen aller gespeicherten Trainings, auch
   Zusammenfassung, weil die Splits mit der Route nach der Aufbewahrung
   verschwinden. Ältere Trainings bekommen ihn beim ersten Start einmal
   nachgetragen, solange sie ihre Route noch haben; ohne Route zählen sie hier
-  nicht.
+  nicht. Seit 0.1.20 zählt beim Radfahren das Tempo von Apple je Kilometer
+  (wie die Balken der Karte „Training“), zu Fuß weiter die aktive Zeit (wie
+  min/km in der Karte); der Sensor zeigt eine Nachkommastelle. Die aktive
+  Zeit speichert die Integration auf ganze Sekunden gerundet, beim schnellen
+  Kilometer macht das sichtbar etwas aus (38 s statt 37,7 s: 94,7 statt
+  95,4 km/h).
 - **Meiste Höhenmeter** zu Fuß und Radfahren.
 - **Trainingsserie:** Tage in Folge mit mindestens einem Training, jede
   Sportart, nach Ortszeit. Die laufende Serie zählt bis heute oder gestern,
@@ -584,6 +589,12 @@ HACS zeigt neue Versionen als Update an. Nach dem Herunterladen Home Assistant
 neu starten, danach einmal die Seite neu laden, in der Companion App den
 Frontend-Cache zurücksetzen.
 
+**Update auf 0.1.20:** keine Migration nötig. Beim ersten Start rechnet die
+Integration den schnellsten Kilometer aller Trainings mit Route einmal neu
+(Rad aus dem Tempo von Apple, Nachkommastellen); Trainings ohne Route
+behalten ihren Wert. Im Verlauf der Sensoren „Schnellster Kilometer …“ steht
+danach ein Sprung, z. B. von 38 auf 37,7 s.
+
 **Update auf 0.1.19:** keine Migration. Die Kilometer-Balken zeigen das
 Tempo von Apple wie die Tabelle (0.1.18 rechnete es aus der auf ganze
 Sekunden gerundeten Zeit, z. B. 94,7 statt 95,4 km/h).
@@ -698,7 +709,11 @@ geht ohne Backup, dann prüft der Webhook den Token aber nicht mehr.
 
 ## Teststand
 
-- **0.1.x:** 290 automatische Tests. 0.1.19: Balken mit dem Tempo von Apple
+- **0.1.x:** 298 automatische Tests. 0.1.20: schnellster Kilometer beim Rad
+  aus dem Tempo von Apple, zu Fuß aus der Zeit, mit Nachkommastellen; einmal
+  neu gerechnet nach dem Update (nur mit Details, Version im Speicher, auch
+  nach einem Neustart nicht erneut), Sensor mit einer Nachkommastelle, Karte
+  „Bestleistungen“ zeigt 95,4 km/h wie die Balken. 0.1.19: Balken mit dem Tempo von Apple
   wie die Tabelle (Rückfall auf Strecke durch Zeit), min/km zu Fuß weiter aus
   der Zeit. 0.1.18: Kilometer-Balken (Werte bis 12
   Kilometer, Achse bei langen Touren, schnellster und langsamster ganzer

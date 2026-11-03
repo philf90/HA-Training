@@ -53,6 +53,7 @@ class TrainingStore:
         )
         self.workouts: list[dict[str, Any]] = []
         self.deleted: set[str] = set()
+        self.best_km_version: int = 1
         # Zaehlt jede Aenderung, die man sehen kann (neu, geaendert, geloescht,
         # Details entfernt). Die Karte laedt neu, wenn er sich aendert; nicht
         # gespeichert, nach einem Neustart beginnt er wieder bei 0.
@@ -74,6 +75,8 @@ class TrainingStore:
         data = await self._index.async_load() or {}
         workouts = data.get("workouts")
         self.workouts = workouts if isinstance(workouts, list) else []
+        version = data.get("best_km_version")
+        self.best_km_version = version if isinstance(version, int) else 1
         deleted = data.get("deleted")
         self.deleted = (
             {d for d in deleted if isinstance(d, str)}
@@ -87,6 +90,7 @@ class TrainingStore:
             {
                 "workouts": [dict(w) for w in self.workouts],
                 "deleted": sorted(self.deleted),
+                "best_km_version": self.best_km_version,
             }
         )
 
@@ -195,23 +199,34 @@ class TrainingStore:
                 workout["has_detail"] = False
 
     async def async_backfill_best_km(self) -> int:
-        """Schnellsten Kilometer fuer Trainings vor 0.1.15 nachtragen (einmalig).
+        """Schnellsten Kilometer nachtragen oder neu rechnen (einmalig).
 
-        Nur Trainings, die ihre Details noch haben; fuer aeltere fehlen die
-        Splits. Dieselbe Rechnung wie beim Einlesen (parser.best_km), damit ein
-        erneut geschicktes Training danach als unveraendert gilt.
-        -> Anzahl nachgetragener Trainings
+        Fuer Trainings vor 0.1.15 fehlt er; seit 0.1.20 rechnet parser.best_km
+        anders (Rad aus dem Tempo von Apple, Nachkommastellen), deshalb einmal
+        alle neu, wenn BEST_KM_VERSION gestiegen ist. Nur Trainings, die ihre
+        Details noch haben; fuer aeltere fehlen die Splits, ihr Wert bleibt.
+        Dieselbe Rechnung wie beim Einlesen, damit ein erneut geschicktes
+        Training danach als unveraendert gilt.
+        -> Anzahl neu gerechneter Trainings
         """
-        from .parser import best_km
+        from .parser import BEST_KM_VERSION, best_km
+        from .sport import CYCLING, sport_of
 
         async with self._lock:
+            again = self.best_km_version < BEST_KM_VERSION
             todo = [
-                w for w in self.workouts if "best_km_s" not in w and w.get("has_detail")
+                w
+                for w in self.workouts
+                if w.get("has_detail") and (again or "best_km_s" not in w)
             ]
             for workout in todo:
                 detail = await self._detail_store(workout["id"]).async_load() or {}
-                workout["best_km_s"] = best_km(detail.get("splits") or [])
-            if todo:
+                workout["best_km_s"] = best_km(
+                    detail.get("splits") or [],
+                    use_speed=sport_of(workout.get("name")) == CYCLING,
+                )
+            if todo or again:
+                self.best_km_version = BEST_KM_VERSION
                 self.revision += 1
                 await self._async_save_index()
             return len(todo)

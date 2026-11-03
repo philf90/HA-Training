@@ -22,6 +22,8 @@ from typing import Any
 from homeassistant.util import dt as dt_util
 from homeassistant.util.json import json_loads
 
+from .sport import CYCLING, sport_of
+
 _LOGGER = logging.getLogger(__name__)
 
 KJ_PER_KCAL = 4.184
@@ -341,18 +343,34 @@ def parse_splits(
 FULL_KM_M = (950.0, 1050.0)
 
 
-def best_km(splits: list[dict[str, Any]]) -> int | None:
-    """Schnellster ganzer Kilometer in Sekunden (auf genau 1 km umgerechnet)."""
-    times = [
-        sp["active_s"] * 1000 / sp["distance_m"]
-        for sp in splits
-        if isinstance(sp, dict)
-        and isinstance(sp.get("distance_m"), (int, float))
-        and FULL_KM_M[0] <= sp["distance_m"] <= FULL_KM_M[1]
-        and isinstance(sp.get("active_s"), (int, float))
-        and sp["active_s"] > 0
-    ]
-    return round(min(times)) if times else None
+# Version der Rechnung in best_km; storage rechnet gespeicherte Trainings
+# einmal neu, wenn sie sich aendert (2 = seit 0.1.20)
+BEST_KM_VERSION = 2
+
+
+def best_km(splits: list[dict[str, Any]], use_speed: bool = False) -> float | None:
+    """Schnellster ganzer Kilometer in Sekunden (auf genau 1 km umgerechnet).
+
+    use_speed (Radfahren): aus dem Tempo von Apple, wie die Karte es zeigt;
+    active_s ist auf ganze Sekunden gerundet (bei 38 s bis 1,3 % daneben).
+    Sonst (zu Fuss, wie min/km in der Karte) aus aktiver Zeit und Strecke.
+    Drei Nachkommastellen, damit das Tempo daraus wieder auf 0,1 km/h stimmt.
+    """
+    times: list[float] = []
+    for sp in splits:
+        if not (
+            isinstance(sp, dict)
+            and isinstance(sp.get("distance_m"), (int, float))
+            and FULL_KM_M[0] <= sp["distance_m"] <= FULL_KM_M[1]
+        ):
+            continue
+        speed = sp.get("speed_kmh")
+        active = sp.get("active_s")
+        if use_speed and isinstance(speed, (int, float)) and speed > 0:
+            times.append(3600 / speed)
+        elif isinstance(active, (int, float)) and active > 0:
+            times.append(active * 1000 / sp["distance_m"])
+    return round(min(times), 3) if times else None
 
 
 def parse_workout(raw: Any) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -433,7 +451,7 @@ def parse_workout(raw: Any) -> tuple[dict[str, Any], dict[str, Any]]:
         "pause_s": sum(b - a for a, b in pauses),
         # Fuer die Bestleistung (E4): die Splits verschwinden mit den Details
         # nach der Aufbewahrung, die Zusammenfassung bleibt
-        "best_km_s": best_km(splits),
+        "best_km_s": best_km(splits, use_speed=sport_of(raw.get("name")) == CYCLING),
         "route_points": len(route),
         "heart_rate_points": len(heart_rate),
     }
