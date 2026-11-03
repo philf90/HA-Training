@@ -33,7 +33,7 @@
  * damit sie zu den Splits passen.
  */
 
-const VERSION = "0.1.12";
+const VERSION = "0.1.13";
 const LEAFLET = "/ha_training/leaflet";
 const OSM_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>';
@@ -73,6 +73,7 @@ const TEXT = {
     hrPeak: "Puls-Max", stop: "unter 1 (Stopp)", from: "ab", below: "unter",
     perKm: "min/km", appleEffort: "Apple-Schätzung", gpsRoute: "GPS-Route", min: "min", max: "max",
     noData: "keine Daten", height: "Höhe", humidity: "Luftfeuchte", temperature: "Temperatur",
+    zone: "Schutzzone", zoneNote: "Anfang und Ende der Route im Umkreis von {r} m um Zuhause sind ausgeblendet (Schutzzone, Einstellung der Integration).",
     levelsSpeed: "Stufen aus diesem Training: je ¼ der Zeit in Bewegung; Tempo für die Farbe über 1 min geglättet",
     levelsHr: "Stufen aus diesem Training: je ⅕ der Zeit",
     gpx: "GPX", del: "Löschen", delConfirm: "Wirklich löschen?",
@@ -96,6 +97,7 @@ const TEXT = {
     hrPeak: "Max HR", stop: "below 1 (stop)", from: "from", below: "below",
     perKm: "min/km", appleEffort: "Apple estimate", gpsRoute: "GPS route", min: "min", max: "max",
     noData: "no data", height: "Altitude", humidity: "humidity", temperature: "Temperature",
+    zone: "Privacy zone", zoneNote: "Start and end of the route within {r} m of home are hidden (privacy zone, setting of the integration).",
     levelsSpeed: "Levels from this workout: ¼ of the moving time each; speed for the colour smoothed over 1 min",
     levelsHr: "Levels from this workout: ⅕ of the time each",
     gpx: "GPX", del: "Delete", delConfirm: "Really delete?",
@@ -412,10 +414,14 @@ class HaTrainingCard extends HTMLElement {
     this._detail = detail;
     this._points = [];
     this._dFactor = 1;
+    this._gpsTotal = null;
     if (!detail) return;
     const hr = detail.heart_rate || [];
     const route = detail.route || [];
-    let h = 0, dist = 0;
+    // Schutzzone (privacy.py): Anfang und Ende fehlen, ihre GPS-Strecke kommt
+    // mit, damit Kilometer und Umrechnung auf die Distanz von Apple stimmen
+    const zone = detail.privacy || null;
+    let h = 0, dist = zone?.start_m || 0;
     for (let i = 0; i < route.length; i++) {
       const [t, lat, lon, alt, speed] = route[i];
       if (i) dist += this._metres(route[i - 1], route[i]);
@@ -428,7 +434,8 @@ class HaTrainingCard extends HTMLElement {
     const chart = medianSmooth(times, speeds, SMOOTH_CHART_S);
     const color = medianSmooth(times, speeds, SMOOTH_COLOR_S);
     this._points.forEach((p, i) => { p.v = chart[i]; p.vc = color[i]; });
-    this._dFactor = distanceFactor(this._summary?.distance_km, dist);
+    this._gpsTotal = dist + (zone?.end_m || 0);
+    this._dFactor = distanceFactor(this._summary?.distance_km, this._gpsTotal);
   }
 
   _metres(a, b) {
@@ -518,7 +525,7 @@ class HaTrainingCard extends HTMLElement {
       return `<option value="${this._escape(w.id)}" ${w.id === this._current ? "selected" : ""}>${d} · ${this._escape(w.name)}${km}</option>`;
     }).join("");
     const pts = this._points;
-    const gps = pts.length ? pts[pts.length - 1].d / 1000 : null;
+    const gps = pts.length ? (this._gpsTotal ?? pts[pts.length - 1].d) / 1000 : null;
     const pace = s.pace_s_per_km;
     const sport = s.sport || "foot";
     // Beim Radfahren: Hoechstwert statt min/km unter dem Tempo
@@ -556,6 +563,7 @@ class HaTrainingCard extends HTMLElement {
       ${this._message ? `<div class="meldung" role="status">${this._t(this._message)}</div>` : ""}
       <div class="werte">${tiles.map(([l, w, u, z]) => `<div class="wert"><div class="l">${l}</div><div class="w">${w}<small>${u}</small></div><div class="z">${z}</div></div>`).join("")}</div>
       ${!this._detail ? `<div class="hinweis">${this._t(this._hidden ? "hidden" : "pruned")}</div>` : ""}
+      ${this._detail?.privacy ? `<div class="hinweis">${this._t("zoneNote").replace("{r}", this._num(this._detail.privacy.radius_m))}</div>` : ""}
       ${hasRoute ? `
       <div class="abschnitt">
         <div class="zeile"><h3>${this._t("route")}</h3>
@@ -793,12 +801,17 @@ class HaTrainingCard extends HTMLElement {
     if (!this._dots) {
       const marks = [];
       const p = this._points;
-      marks.push([0, `${this._t("start")} ${this._clock(p[0].t)}`]);
-      marks.push([p.length - 1, `${this._t("finish")} ${this._clock(p[p.length - 1].t)}`]);
+      const zone = this._detail?.privacy;
+      // Mit Schutzzone ist der erste Punkt nicht der Start: kein Startzeitpunkt zeigen
+      marks.push([0, zone?.start_m ? this._t("zone") : `${this._t("start")} ${this._clock(p[0].t)}`]);
+      marks.push([p.length - 1, zone?.end_m ? this._t("zone") : `${this._t("finish")} ${this._clock(p[p.length - 1].t)}`]);
       const f = this._dFactor || 1;
-      const kmStep = kmMarkStep((p[p.length - 1].d * f) / 1000);
-      for (let km = kmStep; km * 1000 < p[p.length - 1].d * f; km += kmStep) marks.push([p.findIndex((x) => x.d * f >= km * 1000), `${km} km`]);
+      const first = p[0].d * f, last = p[p.length - 1].d * f;
+      const kmStep = kmMarkStep(((this._gpsTotal ?? p[p.length - 1].d) * f) / 1000);
+      // Nur Marken im sichtbaren Teil; sonst saessen Kilometer aus der Zone am Rand
+      for (let km = kmStep; km * 1000 < last; km += kmStep) if (km * 1000 > first) marks.push([p.findIndex((x) => x.d * f >= km * 1000), `${km} km`]);
       for (const [a, b] of this._detail?.pauses || []) {
+        if (a < p[0].t || a > p[p.length - 1].t) continue;
         let i = p.findIndex((x) => x.t >= a);
         if (i < 0) i = p.length - 1;
         marks.push([Math.max(0, i - 1), `${this._t("pause")} ${this._duration(b - a)}`]);
@@ -807,7 +820,8 @@ class HaTrainingCard extends HTMLElement {
       if (hr.length) {
         const peak = hr.reduce((a, b) => (b[2] > a[2] ? b : a));
         const i = p.findIndex((x) => x.t >= peak[0] + 30);
-        if (i > 0) marks.push([i, `${this._t("hrPeak")} ${this._num(peak[2])}`]);
+        const inside = peak[0] + 30 <= p[p.length - 1].t && peak[0] + 30 >= p[0].t;
+        if (i > 0 && inside) marks.push([i, `${this._t("hrPeak")} ${this._num(peak[2])}`]);
       }
       this._marks = marks;
       this._dots = marks.map(([i]) => L.circleMarker(this._ll[i], { radius: 4, color: this._color("surface"), weight: 2, fillColor: this._color("text"), fillOpacity: 1, interactive: false }).addTo(map));
@@ -816,7 +830,8 @@ class HaTrainingCard extends HTMLElement {
     for (const [i, text] of this._marks) {
       const q = map.latLngToContainerPoint(this._ll[i]);
       const g = groups.find((x) => Math.hypot(x.x - q.x, x.y - q.y) < 40);
-      if (g) g.texts.push(text); else groups.push({ x: q.x, y: q.y, i, texts: [text] });
+      // Gleicher Text nur einmal (Rundkurs: beide Raender der Schutzzone liegen nah)
+      if (g) { if (!g.texts.includes(text)) g.texts.push(text); } else groups.push({ x: q.x, y: q.y, i, texts: [text] });
     }
     this._labelLayer = L.layerGroup(groups.map((g) => L.marker(this._ll[g.i], { interactive: false, icon: L.divIcon({ className: "", html: `<span class="marke">${g.texts.map((t) => `<span class="teil">${t}</span>`).join(" · ")}</span>`, iconSize: [0, 0] }) }))).addTo(map);
   }

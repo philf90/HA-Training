@@ -36,12 +36,14 @@
         "data": {
           "keep_details": "Workouts with route and charts",
           "require_token": "Require token",
-          "route_users": "Other accounts that may see routes"
+          "route_users": "Other accounts that may see routes",
+          "privacy_radius": "Privacy zone around home"
         },
         "data_description": {
           "keep_details": "Older workouts keep their summary; route and charts are deleted. One hour of walking with one GPS point per second needs about 170 KB.",
           "require_token": "Rejects calls without the header above (HTTP 401). Turn it on only after the header is entered in Health Auto Export.",
-          "route_users": "Administrators always see routes, charts and the GPX export. Other accounts only see the summary (the same values as the sensors) unless they are selected here."
+          "route_users": "Administrators always see routes, charts and the GPX export. Other accounts only see the summary (the same values as the sensors) unless they are selected here.",
+          "privacy_radius": "Start and end of the route within this radius around the location of Home Assistant (zone.home) are not shown on the card. 0 = off. The stored route stays complete; administrators still get it complete in the GPX export, other accounts only the part outside the zone."
         }
       }
     }

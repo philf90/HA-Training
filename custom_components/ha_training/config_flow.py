@@ -27,13 +27,16 @@ from .const import (
     CONF_KEEP_DETAILS,
     CONF_NEW_TOKEN,
     CONF_NEW_WEBHOOK,
+    CONF_PRIVACY_RADIUS,
     CONF_REQUIRE_TOKEN,
     CONF_ROUTE_USERS,
     CONF_TOKEN,
     CONF_WEBHOOK_ID,
     DEFAULT_KEEP_DETAILS,
+    DEFAULT_PRIVACY_RADIUS,
     DOMAIN,
     MAX_KEEP_DETAILS,
+    MAX_PRIVACY_RADIUS,
     MIN_KEEP_DETAILS,
     TITLE,
 )
@@ -161,6 +164,9 @@ class TrainingOptionsFlow(OptionsFlow):
                     CONF_ROUTE_USERS: [
                         u for u in user_input.get(CONF_ROUTE_USERS, []) if u in known
                     ],
+                    CONF_PRIVACY_RADIUS: int(
+                        user_input.get(CONF_PRIVACY_RADIUS, DEFAULT_PRIVACY_RADIUS)
+                    ),
                 }
             )
         keep = options.get(CONF_KEEP_DETAILS, DEFAULT_KEEP_DETAILS)
@@ -179,6 +185,18 @@ class TrainingOptionsFlow(OptionsFlow):
             vol.Required(
                 CONF_REQUIRE_TOKEN, default=require
             ): selector.BooleanSelector(),
+            vol.Required(
+                CONF_PRIVACY_RADIUS,
+                default=options.get(CONF_PRIVACY_RADIUS, DEFAULT_PRIVACY_RADIUS),
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=0,
+                    max=MAX_PRIVACY_RADIUS,
+                    step=50,
+                    unit_of_measurement="m",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
         }
         if users:
             known = {u["value"] for u in users}

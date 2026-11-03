@@ -23,7 +23,11 @@ async def test_too_many_workouts_rejected(hass: HomeAssistant, entry, hass_clien
         many = [workout(f"V{i}", minutes=2, pause=None) for i in range(4)]
         response = await post(hass_client, payload(*many))
         assert response.status == 413
-        assert await response.json() == {"fehler": "zu viele Trainings", "maximal": 3}
+        assert await response.json() == {
+            "error": "too_many_workouts",
+            "fehler": "zu viele Trainings",
+            "maximal": 3,
+        }
         assert entry.runtime_data.store.workouts == []
         # Genau an der Grenze geht es
         response = await post(hass_client, payload(*many[:3]))
@@ -50,7 +54,7 @@ async def test_decoding_runs_outside_event_loop(
 async def test_empty_body_is_bad_request(hass: HomeAssistant, entry, hass_client):
     response = await post(hass_client, b"", raw=True)
     assert response.status == 400
-    assert await response.json() == {"fehler": "kein JSON"}
+    assert await response.json() == {"error": "invalid_json", "fehler": "kein JSON"}
 
 
 async def test_no_detail_files_beyond_retention(

@@ -18,6 +18,12 @@ CONF_REQUIRE_TOKEN = "require_token"
 # duerfen. Administratoren sehen sie immer, alle anderen nur die
 # Zusammenfassung (dieselben Werte wie die Sensoren).
 CONF_ROUTE_USERS = "route_users"
+# Option: Schutzzone um Zuhause in Metern (0 = aus). Anfang und Ende der Route
+# im Kreis um den Standort von Home Assistant liefert die Karte nicht aus
+# (privacy.py); der GPX-Export nur fuer Administratoren vollstaendig.
+CONF_PRIVACY_RADIUS = "privacy_radius"
+DEFAULT_PRIVACY_RADIUS = 0
+MAX_PRIVACY_RADIUS = 2000
 # Felder des Schritts "Neu konfigurieren"
 CONF_NEW_WEBHOOK = "new_webhook"
 CONF_NEW_TOKEN = "new_token"
