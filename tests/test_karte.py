@@ -316,7 +316,7 @@ FIXED = r"""
   card._hass = {
     language: "de", locale: { language: "de" }, config: { time_zone: "Europe/Berlin" },
     callWS: async (req) => {
-      calls.push(req.type === "ha_training/workouts" ? "list" : req.workout_id);
+      calls.push(req.type === "ha_training/workouts" ? "list" : req.type === "ha_training/records" ? "records" : req.workout_id);
       if (req.type === "ha_training/workouts") return { workouts: list.slice(0, req.limit) };
       const w = list.find((x) => x.id === req.workout_id);
       if (!w) throw new Error("not_found");
@@ -334,7 +334,7 @@ def test_fixed_workout_older_than_list_is_loaded():
     got = js(FIXED.replace("WANTED", "W-40"))
     assert got["current"] == "W-40"
     # Direkt geladen, ohne Umweg ueber das neueste
-    assert got["calls"] == ["list", "W-40"]
+    assert got["calls"] == ["list", "records", "W-40"]
     assert got["message"] is None
     # In der Auswahl steht das eingestellte Training, obwohl es nicht unter
     # den letzten 30 ist
@@ -344,7 +344,7 @@ def test_fixed_workout_older_than_list_is_loaded():
 def test_missing_fixed_workout_falls_back_with_hint():
     got = js(FIXED.replace("WANTED", "W-999"))
     assert got["current"] == "W-0"
-    assert got["calls"] == ["list", "W-999", "W-0"]
+    assert got["calls"] == ["list", "records", "W-999", "W-0"]
     assert got["message"] == "missing"
 
 

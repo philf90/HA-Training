@@ -1,4 +1,4 @@
-"""WebSocket-API fuer die Karte: Liste, Details, GPX-Export und Loeschen.
+"""WebSocket-API fuer die Karte: Liste, Details, Bestleistungen, GPX, Loeschen.
 
 Nur angemeldete Nutzer erreichen sie (Anmeldung der WebSocket-Verbindung von
 Home Assistant). Die Route verlaesst Home Assistant nur auf diesem Weg. Loeschen
@@ -16,6 +16,7 @@ from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
 
+from . import rekorde
 from .const import (
     CONF_PRIVACY_RADIUS,
     CONF_ROUTE_USERS,
@@ -76,6 +77,29 @@ def async_register_websocket(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_workout)
     websocket_api.async_register_command(hass, ws_gpx)
     websocket_api.async_register_command(hass, ws_delete)
+    websocket_api.async_register_command(hass, ws_records)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/records",
+        vol.Optional("entry_id"): str,
+    }
+)
+@callback
+def ws_records(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Bestleistungen und Serien (rekorde.py) fuer die Karte.
+
+    Fuer alle angemeldeten Konten wie die Liste: nur Werte, Name und Beginn
+    eines Trainings, keine Route; dieselben Werte zeigen die Sensoren.
+    """
+    entry = _entry(hass, msg.get("entry_id"))
+    if entry is None:
+        connection.send_error(msg["id"], "not_found", "Kein Eintrag geladen")
+        return
+    connection.send_result(msg["id"], rekorde.cached(entry.runtime_data.store))
 
 
 @websocket_api.websocket_command(

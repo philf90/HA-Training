@@ -278,3 +278,174 @@ async def test_statistics_skipped_without_recorder(hass: HomeAssistant, entry):
 
     assert "recorder" not in hass.config.components
     assert await statistik.async_rebuild(hass, entry.runtime_data.store) is False
+
+
+async def test_websocket_records(
+    hass: HomeAssistant,
+    entry,
+    hass_client,
+    hass_ws_client,
+    hass_read_only_access_token,
+):
+    # Ohne eingefrorene Zeit: sonst laege das Token des Kontos in der Zukunft
+    await post(
+        hass_client, payload(workout("G", datetime(2026, 10, 30, 9, 0, tzinfo=TZ)))
+    )
+    # Auch Konten ohne Adminrechte und ohne Freigabe der Routen: nur Werte
+    ws = await hass_ws_client(hass, hass_read_only_access_token)
+    await ws.send_json({"id": 1, "type": "ha_training/records"})
+    msg = await ws.receive_json()
+    assert msg["success"]
+    result = msg["result"]
+    assert result["distance_foot"]["workout_id"] == "G"
+    assert result["best_km_foot"]["value"] == 660
+    assert result["distance_cycling"] is None
+    assert result["streak_longest"] == 1
+    # Keine Koordinaten oder Details
+    assert set(result["distance_foot"]) == {"value", "workout_id", "name", "start"}
+
+
+CARD_RECORDS = r"""
+(() => {
+  const root = { innerHTML: "", querySelector: () => null, querySelectorAll: () => [] };
+  const card = new HaTrainingCard();
+  card.shadowRoot = { getElementById: (id) => (id === "inhalt" ? root : null) };
+  card._config = CONFIG;
+  card._hass = { language: "de", locale: { language: "de" }, config: { time_zone: "Europe/Berlin" }, user: { is_admin: false } };
+  card._summary = { id: "G", name: "Outdoor Spaziergang", start: "2026-10-31T15:30:04+01:00", sport: "foot" };
+  card._workouts = [card._summary];
+  card._current = "G";
+  card._points = [];
+  card._detail = null;
+  card._records = RECORDS;
+  card._render();
+  return root.innerHTML;
+})()
+"""
+
+RECORDS = {
+    "distance_foot": {
+        "value": 2.913,
+        "workout_id": "G",
+        "name": "x",
+        "start": "2026-10-31T15:30:04+01:00",
+    },
+    "best_km_foot": {
+        "value": 1243,
+        "workout_id": "G",
+        "name": "x",
+        "start": "2026-10-31T15:30:04+01:00",
+    },
+    "elevation_foot": None,
+    "distance_cycling": {
+        "value": 7.611,
+        "workout_id": "R",
+        "name": "y",
+        "start": "2026-11-03T08:11:44+01:00",
+    },
+    "best_km_cycling": {
+        "value": 120,
+        "workout_id": "R",
+        "name": "y",
+        "start": "2026-11-03T08:11:44+01:00",
+    },
+    "elevation_cycling": None,
+    "distance_swimming": None,
+    "streak": 1,
+    "streak_longest": 3,
+}
+
+
+def _card_html(records=RECORDS, config=None):
+    import json
+
+    from .test_karte import js
+
+    return js(
+        CARD_RECORDS.replace("RECORDS", json.dumps(records)).replace(
+            "CONFIG", json.dumps(config or {})
+        )
+    )
+
+
+def test_card_records_section():
+    html = _card_html()
+    assert "Bestleistungen" in html
+    section = html[html.index("Bestleistungen") :]
+    assert "Längste Distanz zu Fuß</td><td>2,91 <small>km</small>" in section
+    assert "Schnellster Kilometer zu Fuß</td><td>20:43 <small>min/km</small>" in section
+    # Rad: km/h vorne, min/km darunter (120 s/km = 30 km/h)
+    assert "30,0 <small>km/h</small><br><small>2:00 min/km</small>" in section
+    # Ohne Wert keine Zeile
+    assert "Höhenmeter" not in section and "Schwimmen" not in section
+    # Datum als Verweis auf das Training; das gezeigte ist markiert
+    assert 'data-w="R"' in section and 'data-w="G"' in section
+    assert section.count('aria-current="true"') == 2  # beide Zeilen von G
+    assert "31.10.2026" in section and "03.11.2026" in section
+    # Serie mit Einzahl und Mehrzahl
+    assert "1 Tag</td>" in section and "längste 3 Tage" in section
+
+
+def test_card_records_hidden():
+    # Ohne Daten (aeltere Integration oder records: false) kein Abschnitt
+    assert "Bestleistungen" not in _card_html(records=None)
+    empty = dict.fromkeys(RECORDS)
+    empty.update(streak=0, streak_longest=0)
+    assert "Bestleistungen" not in _card_html(records=empty)
+
+
+def test_card_does_not_fetch_records_when_disabled():
+    from .test_karte import js
+
+    got = js(
+        r"""
+(async () => {
+  const calls = [];
+  const card = new HaTrainingCard();
+  card.shadowRoot = { getElementById: () => null, querySelector: () => null, querySelectorAll: () => [] };
+  card._config = CONFIG;
+  card._render = () => {};
+  card._hass = { callWS: async (req) => { calls.push(req.type); return req.type === "ha_training/workouts" ? { workouts: [] } : {}; } };
+  await card._loadList();
+  return calls;
+})()
+""".replace("CONFIG", '{"records": false}')
+    )
+    assert "ha_training/records" not in got
+
+
+def test_card_click_on_record_loads_workout():
+    from .test_karte import js
+
+    got = js(
+        r"""
+(async () => {
+  const buttons = [];
+  const root = {
+    innerHTML: "",
+    querySelector: () => null,
+    querySelectorAll: (sel) => (sel === "[data-w]" ? [{ dataset: { w: "R" }, addEventListener: (_, fn) => buttons.push(fn) }] : []),
+  };
+  const calls = [];
+  const card = new HaTrainingCard();
+  card.shadowRoot = { getElementById: (id) => (id === "inhalt" ? root : null) };
+  card._config = {};
+  card._hass = { language: "de", locale: { language: "de" }, config: { time_zone: "Europe/Berlin" }, user: { is_admin: false },
+    callWS: async (req) => { calls.push(req); return { summary: { id: req.workout_id, name: "y", start: "2026-11-03T08:11:44+01:00" }, detail: null }; } };
+  card._summary = { id: "G", name: "x", start: "2026-10-31T15:30:04+01:00" };
+  card._workouts = [card._summary];
+  card._current = "G";
+  card._points = [];
+  card._detail = null;
+  card._records = null;
+  card._render();
+  card._render = () => {};
+  buttons[0]();
+  await new Promise((r) => setTimeout(r, 0));
+  return { selected: card._selected, current: card._current, calls: calls.map((c) => [c.type, c.workout_id]) };
+})()
+"""
+    )
+    assert got["selected"] == "R"
+    assert got["current"] == "R"
+    assert got["calls"] == [["ha_training/workout", "R"]]
