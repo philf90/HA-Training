@@ -442,11 +442,16 @@ MAX_WORKOUTS_PER_CALL = 1000
 
 
 class PayloadError(ValueError):
-    """Aufruf als Ganzes unbrauchbar: kein JSON oder zu viele Trainings."""
+    """Aufruf als Ganzes unbrauchbar: kein JSON oder zu viele Trainings.
 
-    def __init__(self, code: str, limit: int | None = None) -> None:
-        super().__init__(code)
-        self.code = code
+    error: fester englischer Code fuer Protokolle und Automationen (V10),
+    text: deutscher Text wie bisher unter "fehler".
+    """
+
+    def __init__(self, error: str, text: str, limit: int | None = None) -> None:
+        super().__init__(error)
+        self.error = error
+        self.text = text
         self.limit = limit
 
 
@@ -459,11 +464,13 @@ def decode_and_parse(body: bytes) -> tuple[list[tuple[dict, dict]], int]:
     try:
         payload = json_loads(body)
     except ValueError as err:
-        raise PayloadError("kein JSON") from err
+        raise PayloadError("invalid_json", "kein JSON") from err
     data = payload.get("data") if isinstance(payload, dict) else None
     workouts = data.get("workouts") if isinstance(data, dict) else None
     if isinstance(workouts, list) and len(workouts) > MAX_WORKOUTS_PER_CALL:
-        raise PayloadError("zu viele Trainings", MAX_WORKOUTS_PER_CALL)
+        raise PayloadError(
+            "too_many_workouts", "zu viele Trainings", MAX_WORKOUTS_PER_CALL
+        )
     return parse_payload(payload)
 
 

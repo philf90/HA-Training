@@ -16,14 +16,31 @@ from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
 
-from .const import CONF_ROUTE_USERS, DOMAIN
+from .const import (
+    CONF_PRIVACY_RADIUS,
+    CONF_ROUTE_USERS,
+    DEFAULT_PRIVACY_RADIUS,
+    DOMAIN,
+)
 from .gpx import build_gpx, filename
+from .privacy import apply_zone
 from .sport import sport_of
 
 if TYPE_CHECKING:
     from . import TrainingConfigEntry
 
 MAX_LIST = 500
+
+
+def _zone(
+    hass: HomeAssistant, entry: TrainingConfigEntry, detail: dict[str, Any]
+) -> dict[str, Any]:
+    """Details mit Schutzzone um den Standort von Home Assistant (E8)."""
+    radius = entry.options.get(CONF_PRIVACY_RADIUS, DEFAULT_PRIVACY_RADIUS)
+    if not radius:
+        return detail
+    home = (hass.config.latitude, hass.config.longitude)
+    return apply_zone(detail, home, float(radius))
 
 
 def _with_sport(summary: dict[str, Any]) -> dict[str, Any]:
@@ -114,6 +131,10 @@ async def ws_workout(
         )
         return
     detail = await store.async_get_detail(msg["workout_id"])
+    if detail:
+        # Fuer alle Konten, auch Administratoren: die Karte laedt Kacheln fuer
+        # das Gebiet der Route, und Dashboards laufen oft auf geteilten Geraeten
+        detail = _zone(hass, entry, detail)
     connection.send_result(msg["id"], {"summary": summary, "detail": detail})
 
 
@@ -139,6 +160,10 @@ async def ws_gpx(
     store = entry.runtime_data.store
     summary = store.get(msg["workout_id"])
     detail = await store.async_get_detail(msg["workout_id"]) if summary else None
+    if detail and not connection.user.is_admin:
+        # Administratoren bekommen die ganze Route (eigener Export, z. B. fuer
+        # eine andere App), freigegebene Konten nur den Teil ausserhalb der Zone
+        detail = _zone(hass, entry, detail)
     text = (
         await hass.async_add_executor_job(build_gpx, summary, detail)
         if detail

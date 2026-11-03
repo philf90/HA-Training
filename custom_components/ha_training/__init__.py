@@ -153,7 +153,7 @@ async def _async_handle_webhook(
     if not _token_ok(entry, request):
         _LOGGER.warning("Webhook: Aufruf ohne gueltigen Token abgelehnt")
         return web.json_response(
-            {"fehler": "token fehlt oder falsch"},
+            {"error": "unauthorized", "fehler": "token fehlt oder falsch"},
             status=401,
             headers={hdrs.WWW_AUTHENTICATE: "Bearer"},
         )
@@ -163,11 +163,13 @@ async def _async_handle_webhook(
         # Event-Loop, sonst steht Home Assistant so lange
         parsed, rejected = await hass.async_add_executor_job(decode_and_parse, body)
     except PayloadError as err:
+        # "error": fester Code (englisch, aendert sich nicht), "fehler": Text
         if err.limit is not None:
             return web.json_response(
-                {"fehler": err.code, "maximal": err.limit}, status=413
+                {"error": err.error, "fehler": err.text, "maximal": err.limit},
+                status=413,
             )
-        return web.json_response({"fehler": err.code}, status=400)
+        return web.json_response({"error": err.error, "fehler": err.text}, status=400)
     store = entry.runtime_data.store
     new, updated, skipped = await store.async_add(parsed)
     if new or updated:

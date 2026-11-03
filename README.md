@@ -14,7 +14,7 @@ dieser Integration. Home Assistant speichert die Trainings privat, zeigt das
 letzte Training und die Woche als Sensoren und meldet neue Trainings als
 Ereignis. Die mitgelieferte Karte zeichnet die Route auf einer Karte, nach
 Tempo oder Puls eingefärbt, mit gekoppeltem Verlauf und Kilometer-Tabelle.
-Version 0.1.12.
+Version 0.1.13.
 
 ## Inhalt
 
@@ -86,7 +86,8 @@ Unter „Konfigurieren“ steht außerdem, wie viele Trainings ihre Route und
 Verläufe behalten (Standard 200, 10–2000; ältere Trainings behalten ihre
 Zusammenfassung), der Schalter „Token verlangen“ und, falls es Konten ohne
 Administratorrechte gibt, die Auswahl „Weitere Konten, die Routen sehen
-dürfen“ (siehe [Datenschutz und Speicher](#datenschutz-und-speicher)).
+dürfen“ und die „Schutzzone um Zuhause“ (siehe
+[Datenschutz und Speicher](#datenschutz-und-speicher)).
 
 ## Health Auto Export einstellen
 
@@ -134,6 +135,16 @@ Zum Schluss **Enabled** einschalten und mit **Update** speichern. Zum Testen
 in der Automation unter **Export Existing Data** → **Manual Upload** einen
 Zeitraum wählen und **Begin Export**; das Ergebnis steht unter **View Activity
 Logs**.
+
+Antworten des Webhooks (seit 0.1.13 mit festem Code unter `error`, der sich
+nicht ändert; `fehler` ist der deutsche Text wie bisher):
+
+| HTTP | `error` | Bedeutung |
+|---|---|---|
+| 200 | – | angenommen: `{"trainings", "neu", "geaendert", "verworfen", "geloescht"}` |
+| 400 | `invalid_json` | Inhalt ist kein JSON |
+| 401 | `unauthorized` | Token fehlt oder ist falsch (nur mit „Token verlangen“) |
+| 413 | `too_many_workouts` | mehr als 1000 Trainings in einem Aufruf (`maximal` nennt die Grenze) |
 
 ## Webhook mit Token absichern
 
@@ -408,7 +419,8 @@ Zeit (UTC); der Puls steht in der Garmin-Erweiterung `TrackPointExtension`
 (je Punkt der letzte Messwert, höchstens 120 s alt). Eine Lücke von mehr als
 10 Sekunden, z. B. eine Pause, beginnt ein neues Segment. Den Knopf gibt es nur,
 solange das Training seine Route noch hat (siehe Aufbewahrung unter
-„Konfigurieren“).
+„Konfigurieren“). Mit Schutzzone bekommen Administratoren die ganze Route,
+freigegebene Konten nur den Teil außerhalb der Zone.
 
 ## Aktualisieren
 
@@ -458,6 +470,20 @@ geht ohne Backup, dann prüft der Webhook den Token aber nicht mehr.
   nur die Zusammenfassung (Distanz, Zeit, Puls, Energie) mit dem Hinweis, dass
   die Route nicht freigegeben ist. Dieselben Werte zeigen auch die Sensoren;
   Home Assistant kennt keine Rechte je Entität.
+- **Schutzzone um Zuhause** (seit 0.1.13, unter „Konfigurieren“, in Metern,
+  0 = aus, bis 2000): Anfang und Ende der Route innerhalb dieses Radius um den
+  Standort von Home Assistant (`zone.home`) liefert die Integration nicht an
+  die Karte, für alle Konten. Gekürzt wird in Home Assistant, die Koordinaten
+  im Kreis erreichen den Browser nicht. Der Kartenausschnitt richtet sich nach
+  der sichtbaren Route; liegt Zuhause nahe daran, kann es im Ausschnitt
+  trotzdem zu sehen sein, ohne dass die Route dorthin führt. An den Rändern steht „Schutzzone“ statt Start und Ziel, Kilometer
+  und Distanz bleiben richtig. Die gespeicherte Route bleibt vollständig, die
+  Zone lässt sich also jederzeit ändern. Im GPX-Export gilt sie für
+  freigegebene Konten, nicht für Administratoren. Grenzen: Durchquert die Route
+  den Kreis mittendrin, bleibt dieser Teil sichtbar. Der erste sichtbare Punkt
+  liegt am Rand des Kreises; mehrere Routen zusammen verraten so ungefähr
+  seinen Mittelpunkt. Ein größerer Radius macht das ungenauer, aber nicht
+  unmöglich.
 - Die Diagnose enthält weder die Webhook-ID noch den Token noch Koordinaten,
   von den Details nur Anzahlen. Ins Log schreibt die Integration keines der
   beiden Geheimnisse.
@@ -483,7 +509,7 @@ geht ohne Backup, dann prüft der Webhook den Token aber nicht mehr.
   ihre Felder passen (Route mit `lat`/`lon`, Puls mit `qty`).
 - Ein Aufruf darf höchstens 16 MB groß sein (Grenze von Home Assistant) und
   höchstens 1000 Trainings enthalten; sonst antwortet der Webhook mit HTTP 413
-  und `{"fehler": "zu viele Trainings", "maximal": 1000}`. Eine Stunde Training
+  und `{"error": "too_many_workouts", "fehler": "zu viele Trainings", "maximal": 1000}`. Eine Stunde Training
   mit Route und Puls im Sekundentakt braucht im JSON von Health Auto Export rund
   1 MB (gemessen: 3,08 MB für drei Stunden), an die 1000 kommt also nur ein
   Abgleich ohne Routen heran. Für einen großen ersten Abgleich den Zeitraum
@@ -504,7 +530,10 @@ geht ohne Backup, dann prüft der Webhook den Token aber nicht mehr.
 
 ## Teststand
 
-- **0.1.x:** 212 automatische Tests. 0.1.12: Sportart aus deutschen und
+- **0.1.x:** 228 automatische Tests. 0.1.13: Schutzzone (Anfang und Ende
+  gekürzt, Mitte sichtbar, ganz im Kreis leer, GPX für Admins ganz, für
+  freigegebene Konten gekürzt, Kilometer, Pausen und Marken in der Karte),
+  feste Fehlercodes 400/401/413. 0.1.12: Sportart aus deutschen und
   englischen Namen (auch Skilanglauf und Rollstuhl nicht zu Fuß), Wochensummen
   je Sportart neben unveränderten Gesamtsummen, Sportart nur berechnet, Karte
   mit Symbol, Kacheln und Tabelle je Sportart. 0.1.11: Distanz in yd, ft, m, km, mi und

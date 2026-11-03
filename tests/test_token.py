@@ -92,6 +92,7 @@ async def test_without_valid_token_rejected(
         response = await send(hass_client_no_auth, header)
     assert response.status == 401
     assert response.headers["WWW-Authenticate"] == "Bearer"
+    assert (await response.json())["error"] == "unauthorized"
     # Abgelehnt, bevor der Inhalt gelesen wird
     parse.assert_not_called()
     assert token_entry.runtime_data.store.workouts == []
@@ -120,6 +121,8 @@ async def test_option_switches_token_without_reload(
         CONF_KEEP_DETAILS: 200,
         CONF_REQUIRE_TOKEN: True,
         "route_users": [],
+        # Ohne Angabe im Formular: Standard 0 (Schutzzone aus)
+        "privacy_radius": 0,
     }
     assert (await send(hass_client_no_auth, None)).status == 401
     assert (await send(hass_client_no_auth, header)).status == 200
