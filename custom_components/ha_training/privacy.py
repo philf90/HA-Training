@@ -1,18 +1,18 @@
-"""Schutzzone um Zuhause (E8): Anfang und Ende der Route ausblenden.
+"""Schutzzone um Zuhause (E8): Punkte der Route im Kreis ausblenden.
 
-Wie die Privatsphaere-Zonen in Sport-Apps: Punkte am Anfang der Route werden
-weggelassen, bis die Route den Kreis um Zuhause verlaesst; am Ende ebenso,
-sobald sie ihn wieder betritt. Durchquert die Route den Kreis mittendrin,
-bleibt dieser Teil sichtbar.
+Wie die Privatsphaere-Zonen in Sport-Apps, aber fuer die ganze Route: Jeder
+Punkt innerhalb des Kreises um Zuhause wird weggelassen, am Anfang, am Ende
+und auch mittendrin (0.1.13 kuerzte nur Anfang und Ende; eine Durchfahrt nahe
+am Zuhause blieb sichtbar, im echten Einsatz am 03.11.2026 beobachtet).
 
 Gekuerzt wird auf dem Server, die Koordinaten im Kreis verlassen Home
 Assistant also nicht. Die gespeicherten Details bleiben vollstaendig; die
 Zone wirkt nur auf das, was die Karte und der GPX-Export liefern, und laesst
 sich deshalb jederzeit aendern oder abschalten.
 
-Grenze: Der erste sichtbare Punkt liegt am Rand des Kreises. Mehrere Routen
-zusammen verraten so ungefaehr seinen Mittelpunkt. Ein groesserer Radius macht
-das ungenauer, aber nicht unmoeglich.
+Grenze: An jeder Luecke liegt ein sichtbarer Punkt am Rand des Kreises.
+Mehrere Routen zusammen verraten so ungefaehr seinen Mittelpunkt. Ein
+groesserer Radius macht das ungenauer, aber nicht unmoeglich.
 """
 
 from __future__ import annotations
@@ -41,28 +41,37 @@ def trim_route(
     fields: list[str],
     home: tuple[float, float],
     radius_m: float,
-) -> tuple[list[list[Any]], float, float]:
-    """Route ohne Anfang und Ende im Kreis -> (Route, Meter vorn, Meter hinten).
+) -> tuple[list[list[Any]], float, float, list[list[float]]]:
+    """Route ohne Punkte im Kreis.
 
-    Die Meter sind die GPS-Strecke der weggelassenen Teile. Die Karte braucht
-    sie, damit Kilometer-Marken und Umrechnung auf die Distanz von Apple
-    weiter stimmen.
+    -> (Route, Meter vorn, Meter hinten, Luecken [[Stelle, Meter], ...])
+
+    Meter sind die GPS-Strecke der weggelassenen Teile; bei einer Luecke vom
+    letzten sichtbaren Punkt davor bis zum ersten danach, "Stelle" ist der
+    Index dieses ersten Punkts in der gekuerzten Route. Die Karte braucht das,
+    damit Kilometer-Marken und Umrechnung auf die Distanz von Apple weiter
+    stimmen, und trennt die Linie dort.
     """
     if radius_m <= 0 or not route or not {"lat", "lon"} <= set(fields):
-        return route, 0.0, 0.0
+        return route, 0.0, 0.0, []
     i_lat, i_lon = fields.index("lat"), fields.index("lon")
-
-    def outside(row: list[Any]) -> bool:
-        return metres(row[i_lat], row[i_lon], *home) > radius_m
-
-    first = next((i for i, row in enumerate(route) if outside(row)), None)
-    if first is None:
+    visible = [
+        i
+        for i, row in enumerate(route)
+        if metres(row[i_lat], row[i_lon], *home) > radius_m
+    ]
+    if not visible:
         # Ganz im Kreis: nichts zeigen
-        return [], _length(route, i_lat, i_lon), 0.0
-    last = next(i for i in range(len(route) - 1, -1, -1) if outside(route[i]))
+        return [], _length(route, i_lat, i_lon), 0.0, []
+    first, last = visible[0], visible[-1]
     start_m = _length(route[: first + 1], i_lat, i_lon)
     end_m = _length(route[last:], i_lat, i_lon)
-    return route[first : last + 1], start_m, end_m
+    gaps = [
+        [pos, round(_length(route[a : b + 1], i_lat, i_lon), 1)]
+        for pos, (a, b) in enumerate(pairwise(visible), start=1)
+        if b - a > 1
+    ]
+    return [route[i] for i in visible], start_m, end_m, gaps
 
 
 def _length(rows: list[list[Any]], i_lat: int, i_lon: int) -> float:
@@ -77,7 +86,7 @@ def apply_zone(
     """Kopie der Details mit gekuerzter Route und Angaben fuer die Karte."""
     if radius_m <= 0:
         return detail
-    route, start_m, end_m = trim_route(
+    route, start_m, end_m, gaps = trim_route(
         detail.get("route") or [],
         list(detail.get("route_fields") or []),
         home,
@@ -90,5 +99,6 @@ def apply_zone(
             "radius_m": radius_m,
             "start_m": round(start_m, 1),
             "end_m": round(end_m, 1),
+            "gaps": gaps,
         },
     }

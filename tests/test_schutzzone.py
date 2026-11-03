@@ -43,37 +43,53 @@ def test_trim_start_and_end():
     # Hin bis 100 m und zurueck nach Hause
     steps = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0]
     route = _line(steps)
-    kept, start_m, end_m = trim_route(route, FIELDS, HOME, 35)
+    kept, start_m, end_m, gaps = trim_route(route, FIELDS, HOME, 35)
     # Erster Punkt ausserhalb von 35 m ist der bei 40 m
     assert [r[0] for r in kept] == [r[0] for r in route[4:17]]
     assert all(metres(r[1], r[2], *HOME) > 35 for r in kept)
     assert start_m == pytest.approx(40, abs=0.1)
     assert end_m == pytest.approx(40, abs=0.1)
+    assert gaps == []
 
 
-def test_middle_pass_stays_visible():
-    # Weg, mittendrin an Zuhause vorbei, wieder weg
-    steps = [10, 9, 8, 0, 8, 9, 10]
-    kept, start_m, end_m = trim_route(_line(steps), FIELDS, HOME, 35)
-    assert len(kept) == 7
+def test_middle_pass_is_hidden():
+    # Weg, mittendrin an Zuhause vorbei, wieder weg (0.1.13 zeigte das)
+    steps = [10, 9, 8, 2, 0, 1, 8, 9, 10]
+    route = _line(steps)
+    kept, start_m, end_m, gaps = trim_route(route, FIELDS, HOME, 35)
+    assert [r[0] for r in kept] == [r[0] for r in route[:3] + route[6:]]
+    assert all(metres(r[1], r[2], *HOME) > 35 for r in kept)
     assert (start_m, end_m) == (0, 0)
+    # Luecke vor dem 4. sichtbaren Punkt: 80 -> 20 -> 0 -> 10 -> 80 m
+    assert gaps == [[3, pytest.approx(160, abs=0.2)]]
+
+
+def test_several_gaps():
+    steps = [10, 0, 10, 10, 1, 10]
+    kept, _, _, gaps = trim_route(_line(steps), FIELDS, HOME, 35)
+    assert len(kept) == 4
+    assert [g[0] for g in gaps] == [1, 3]
 
 
 def test_all_inside_and_off():
     route = _line([0, 1, 2, 1, 0])
-    kept, start_m, _ = trim_route(route, FIELDS, HOME, 35)
+    kept, start_m, _, gaps = trim_route(route, FIELDS, HOME, 35)
     assert kept == []
+    assert gaps == []
     assert start_m == pytest.approx(40, abs=0.1)
-    assert trim_route(route, FIELDS, HOME, 0) == (route, 0.0, 0.0)
+    assert trim_route(route, FIELDS, HOME, 0) == (route, 0.0, 0.0, [])
     # Ohne Koordinatenfelder bleibt alles, wie es ist
-    assert trim_route(route, ["t"], HOME, 35) == (route, 0.0, 0.0)
+    assert trim_route(route, ["t"], HOME, 35) == (route, 0.0, 0.0, [])
 
 
-async def _setup(hass: HomeAssistant, entry, hass_client, radius: int, users=()):
+async def _setup(
+    hass: HomeAssistant, entry, hass_client, radius: int, users=(), at: int = 0
+):
     raw = workout()
     await post(hass_client, payload(raw))
-    first = raw["route"][0]
-    # Zuhause am Startpunkt der Testrunde (Kreis mit rund 400 m Radius)
+    first = raw["route"][at]
+    # Zuhause an einem Punkt der Testrunde (Kreis mit rund 400 m Radius), am
+    # Start oder mittendrin
     hass.config.latitude = first["latitude"]
     hass.config.longitude = first["longitude"]
     result = await hass.config_entries.options.async_init(entry.entry_id)
@@ -299,3 +315,133 @@ def test_card_same_text_once_when_edges_meet():
     )
     assert len(html) == 1
     assert html[0].count("Schutzzone") == 1
+
+
+async def test_zone_hides_middle_pass(
+    hass: HomeAssistant, entry, hass_client, hass_ws_client
+):
+    # Zuhause auf halber Runde: Anfang und Ende liegen ausserhalb, die
+    # Durchfahrt mittendrin muss trotzdem fehlen
+    home = await _setup(hass, entry, hass_client, 200, at=1200)
+    full = (await entry.runtime_data.store.async_get_detail("TEST-0001"))["route"]
+    detail = await _detail(await hass_ws_client(hass))
+    route, zone = detail["route"], detail["privacy"]
+    assert min(metres(r[1], r[2], *home) for r in route) > 200
+    assert (zone["start_m"], zone["end_m"]) == (0, 0)
+    assert len(zone["gaps"]) == 1
+    index, hidden = zone["gaps"][0]
+    assert hidden > 400  # durch einen Kreis von 200 m Radius
+
+    # Sichtbar + Luecke = ganze GPS-Strecke
+    def length(rows):
+        return sum(metres(a[1], a[2], b[1], b[2]) for a, b in pairwise(rows))
+
+    visible = length(route[:index]) + hidden + length(route[index:])
+    assert visible == pytest.approx(length(full), abs=1)
+
+
+async def _segments(ws, msg_id) -> int:
+    await ws.send_json(
+        {"id": msg_id, "type": "ha_training/gpx", "workout_id": "TEST-0001"}
+    )
+    root = ET.fromstring((await ws.receive_json())["result"]["gpx"])
+    return len(list(root.iter("{http://www.topografix.com/GPX/1/1}trkseg")))
+
+
+async def test_gpx_new_segment_at_zone_gap(
+    hass: HomeAssistant,
+    entry,
+    hass_client,
+    hass_ws_client,
+    hass_read_only_user,
+    hass_read_only_access_token,
+):
+    await _setup(hass, entry, hass_client, 200, [hass_read_only_user.id], at=1200)
+    # Testrunde hat eine Pause (zwei Segmente); die Luecke der Zone ein drittes
+    assert await _segments(await hass_ws_client(hass), 1) == 2
+    shared = await hass_ws_client(hass, hass_read_only_access_token)
+    assert await _segments(shared, 2) == 3
+
+
+def test_gpx_breaks_at_short_gap():
+    # Durchfahrt kuerzer als 10 s: ohne Angabe der Luecke liefe die Linie
+    # quer durch den Kreis
+    from custom_components.ha_training.gpx import build_gpx
+
+    route = _line([10, 11, 12, 13])
+    detail = {
+        "route_fields": FIELDS,
+        "route": route,
+        "privacy": {"radius_m": 35, "start_m": 0, "end_m": 0, "gaps": [[2, 50.0]]},
+    }
+    text = build_gpx({"name": "Test"}, detail)
+    assert text.count("<trkseg>") == 2
+
+
+CARD_GAP = r"""
+(async () => {
+  const card = new HaTrainingCard();
+  card._hass = { language: "de", locale: { language: "de" }, config: { time_zone: "Europe/Berlin" } };
+  card._config = {};
+  card._colorBy = "speed";
+  card.shadowRoot = { getElementById: () => null, querySelector: () => null, querySelectorAll: () => [] };
+  card._summary = { id: "A", distance_km: 3.7, start: "2026-10-30T15:00:00+01:00" };
+  // 21 Punkte je 100 m nach Norden, 1 s Abstand; vor Punkt 10 eine Luecke der
+  // Zone mit 800 m Strecke (auf der Karte nur 100 m Abstand)
+  const route = Array.from({ length: 21 }, (_, i) => [1793000000 + i, 52.5 + (i * 100) / 111195, 13.4, 30, 1.7, 5]);
+  card._prepare({ route, heart_rate: [], pauses: [[1793000009, 1793000009]], privacy: { radius_m: 300, start_m: 450, end_m: 550, gaps: [[10, 800]] } });
+  card._color = () => "#000000";
+  const any = new Proxy(function () {}, { get: (t, k) => (k === "then" ? undefined : k === "x" || k === "y" ? 0 : any), apply: () => any });
+  globalThis.window = { L: any };
+  globalThis.ResizeObserver = class { observe() {} disconnect() {} };
+  card._removeMap = () => {};
+  await card._initMap({ isConnected: true });
+  card._dots = null;
+  card._map = { latLngToContainerPoint: () => ({ x: Math.random() * 1e6, y: 0 }), removeLayer() {} };
+  card._labels();
+  return { d: card._points.map((p) => Math.round(p.d)), total: Math.round(card._gpsTotal), parts: card._parts.map((p) => [p[0], p[p.length - 1]]), marks: card._marks.map(([i, t]) => [i, t]) };
+})()
+"""
+
+
+def test_card_gap_in_zone():
+    got = js(CARD_GAP)
+    # Strecke: 450 m vor der Zone, dann je 100 m, an der Luecke 800 m
+    assert got["d"][9] == 1350 and got["d"][10] == 2150
+    assert got["total"] == 3150 + 550
+    # Linie an der Luecke getrennt, obwohl nur 1 s dazwischen liegt
+    assert got["parts"] == [[0, 9], [10, 20]]
+    marks = got["marks"]
+    zone = sorted(i for i, t in marks if t == "Schutzzone")
+    assert zone == [0, 9, 10, 20]
+    kms = [(i, t) for i, t in marks if t.endswith(" km")]
+    # 2 km liegt in der Luecke (1,35 bis 2,15 km): keine Marke am Rand
+    assert kms == [(6, "1 km"), (19, "3 km")]
+    # Die Pause bei Sekunde 9 liegt vor der Luecke, nicht darin: bleibt
+    assert any(t.startswith("Pause") for _, t in marks)
+
+
+def test_card_drops_pause_in_gap():
+    got = js(
+        CARD_GAP.replace("[[1793000009, 1793000009]]", "[[1793000009.5, 1793000010]]")
+    )
+    assert not any(t.startswith("Pause") for _, t in got["marks"])
+
+
+@pytest.mark.parametrize(
+    ("peak", "shown"),
+    [
+        # Puls-Max + 30 s faellt zwischen Punkt 9 und 10, also in die Luecke
+        (1792999979.5, False),
+        # Gegenkontrolle: 30 s vor Punkt 5, sichtbar
+        (1792999975, True),
+    ],
+)
+def test_card_hr_peak_in_gap(peak, shown):
+    got = js(
+        CARD_GAP.replace(
+            "heart_rate: []",
+            f"heart_rate: [[{peak}, 100, 150, 160], [1793000020, 90, 100, 110]]",
+        )
+    )
+    assert any(t.startswith("Puls-Max") for _, t in got["marks"]) is shown

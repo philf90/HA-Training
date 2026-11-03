@@ -33,7 +33,7 @@
  * damit sie zu den Splits passen.
  */
 
-const VERSION = "0.1.13";
+const VERSION = "0.1.14";
 const LEAFLET = "/ha_training/leaflet";
 const OSM_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>';
@@ -73,7 +73,7 @@ const TEXT = {
     hrPeak: "Puls-Max", stop: "unter 1 (Stopp)", from: "ab", below: "unter",
     perKm: "min/km", appleEffort: "Apple-Schätzung", gpsRoute: "GPS-Route", min: "min", max: "max",
     noData: "keine Daten", height: "Höhe", humidity: "Luftfeuchte", temperature: "Temperatur",
-    zone: "Schutzzone", zoneNote: "Anfang und Ende der Route im Umkreis von {r} m um Zuhause sind ausgeblendet (Schutzzone, Einstellung der Integration).",
+    zone: "Schutzzone", zoneNote: "Teile der Route im Umkreis von {r} m um Zuhause sind ausgeblendet (Schutzzone, Einstellung der Integration).",
     levelsSpeed: "Stufen aus diesem Training: je ¼ der Zeit in Bewegung; Tempo für die Farbe über 1 min geglättet",
     levelsHr: "Stufen aus diesem Training: je ⅕ der Zeit",
     gpx: "GPX", del: "Löschen", delConfirm: "Wirklich löschen?",
@@ -97,7 +97,7 @@ const TEXT = {
     hrPeak: "Max HR", stop: "below 1 (stop)", from: "from", below: "below",
     perKm: "min/km", appleEffort: "Apple estimate", gpsRoute: "GPS route", min: "min", max: "max",
     noData: "no data", height: "Altitude", humidity: "humidity", temperature: "Temperature",
-    zone: "Privacy zone", zoneNote: "Start and end of the route within {r} m of home are hidden (privacy zone, setting of the integration).",
+    zone: "Privacy zone", zoneNote: "Parts of the route within {r} m of home are hidden (privacy zone, setting of the integration).",
     levelsSpeed: "Levels from this workout: ¼ of the moving time each; speed for the colour smoothed over 1 min",
     levelsHr: "Levels from this workout: ⅕ of the time each",
     gpx: "GPX", del: "Delete", delConfirm: "Really delete?",
@@ -415,16 +415,19 @@ class HaTrainingCard extends HTMLElement {
     this._points = [];
     this._dFactor = 1;
     this._gpsTotal = null;
+    this._zoneGaps = new Map();
     if (!detail) return;
     const hr = detail.heart_rate || [];
     const route = detail.route || [];
     // Schutzzone (privacy.py): Anfang und Ende fehlen, ihre GPS-Strecke kommt
     // mit, damit Kilometer und Umrechnung auf die Distanz von Apple stimmen
     const zone = detail.privacy || null;
+    // Luecken mittendrin: Stelle des ersten Punkts danach -> ausgeblendete Meter
+    this._zoneGaps = new Map((zone?.gaps || []).map(([i, m]) => [i, m]));
     let h = 0, dist = zone?.start_m || 0;
     for (let i = 0; i < route.length; i++) {
       const [t, lat, lon, alt, speed] = route[i];
-      if (i) dist += this._metres(route[i - 1], route[i]);
+      if (i) dist += this._zoneGaps.has(i) ? this._zoneGaps.get(i) : this._metres(route[i - 1], route[i]);
       while (h + 1 < hr.length && hr[h + 1][0] <= t) h++;
       const sample = hr.length && hr[h][0] <= t && t - hr[h][0] < 120 ? hr[h][2] : null;
       this._points.push({ t, lat, lon, alt, speed, hr: sample, d: dist });
@@ -734,7 +737,8 @@ class HaTrainingCard extends HTMLElement {
     this._parts = [];
     let part = [0];
     for (let i = 1; i < this._points.length; i++) {
-      if (this._points[i].t - this._points[i - 1].t > 10) { this._parts.push(part); part = [i]; } else part.push(i);
+      // Auch an jeder Luecke der Schutzzone: keine Linie quer durch den Kreis
+      if (this._points[i].t - this._points[i - 1].t > 10 || this._zoneGaps?.has(i)) { this._parts.push(part); part = [i]; } else part.push(i);
     }
     this._parts.push(part);
     const surface = this._color("surface");
@@ -807,11 +811,16 @@ class HaTrainingCard extends HTMLElement {
       marks.push([p.length - 1, zone?.end_m ? this._t("zone") : `${this._t("finish")} ${this._clock(p[p.length - 1].t)}`]);
       const f = this._dFactor || 1;
       const first = p[0].d * f, last = p[p.length - 1].d * f;
+      // Luecken der Schutzzone: Raender markieren; was darin liegt (Kilometer,
+      // Pause, Puls-Max), bekommt keine Marke am Rand
+      const gaps = [...(this._zoneGaps || new Map()).keys()].filter((i) => i > 0 && i < p.length);
+      for (const i of gaps) marks.push([i - 1, this._t("zone")], [i, this._t("zone")]);
+      const inGap = (key, value) => gaps.some((i) => p[i - 1][key] < value && value < p[i][key]);
       const kmStep = kmMarkStep(((this._gpsTotal ?? p[p.length - 1].d) * f) / 1000);
       // Nur Marken im sichtbaren Teil; sonst saessen Kilometer aus der Zone am Rand
-      for (let km = kmStep; km * 1000 < last; km += kmStep) if (km * 1000 > first) marks.push([p.findIndex((x) => x.d * f >= km * 1000), `${km} km`]);
+      for (let km = kmStep; km * 1000 < last; km += kmStep) if (km * 1000 > first && !inGap("d", (km * 1000) / f)) marks.push([p.findIndex((x) => x.d * f >= km * 1000), `${km} km`]);
       for (const [a, b] of this._detail?.pauses || []) {
-        if (a < p[0].t || a > p[p.length - 1].t) continue;
+        if (a < p[0].t || a > p[p.length - 1].t || inGap("t", a)) continue;
         let i = p.findIndex((x) => x.t >= a);
         if (i < 0) i = p.length - 1;
         marks.push([Math.max(0, i - 1), `${this._t("pause")} ${this._duration(b - a)}`]);
@@ -820,7 +829,7 @@ class HaTrainingCard extends HTMLElement {
       if (hr.length) {
         const peak = hr.reduce((a, b) => (b[2] > a[2] ? b : a));
         const i = p.findIndex((x) => x.t >= peak[0] + 30);
-        const inside = peak[0] + 30 <= p[p.length - 1].t && peak[0] + 30 >= p[0].t;
+        const inside = peak[0] + 30 <= p[p.length - 1].t && peak[0] + 30 >= p[0].t && !inGap("t", peak[0] + 30);
         if (i > 0 && inside) marks.push([i, `${this._t("hrPeak")} ${this._num(peak[2])}`]);
       }
       this._marks = marks;
