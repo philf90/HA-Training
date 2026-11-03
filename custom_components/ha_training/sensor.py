@@ -26,7 +26,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.event import async_track_time_change
 from homeassistant.util import dt as dt_util
 
-from . import TrainingConfigEntry
+from . import TrainingConfigEntry, rekorde
 from .const import SIGNAL_UPDATED
 from .entity import TrainingEntity
 from .parser import parse_time
@@ -122,10 +122,23 @@ def _latest_start(store: TrainingStore, now: datetime) -> Any:
     return parse_time(latest.get("start")) if latest else None
 
 
+def _record_value(key: str) -> Callable[[TrainingStore, datetime], Any]:
+    def value(store: TrainingStore, now: datetime) -> Any:
+        record = rekorde.cached(store, now).get(key)
+        if isinstance(record, dict):
+            return record["value"]
+        return record
+
+    return value
+
+
 @dataclass(frozen=True, kw_only=True)
 class TrainingSensorDescription(SensorEntityDescription):
     value_fn: Callable[[TrainingStore, datetime], Any]
+    # week: taeglich kurz nach Mitternacht neu schreiben (Wochenwechsel, Serie)
     week: bool = False
+    # Bestleistung (rekorde.RECORDS): Training als Attribute
+    record: str | None = None
 
 
 SENSORS: tuple[TrainingSensorDescription, ...] = (
@@ -315,6 +328,55 @@ def _sport_sensors(sport: str) -> tuple[TrainingSensorDescription, ...]:
 SENSORS += tuple(d for sport in GROUPS for d in _sport_sensors(sport))
 
 
+def _record_sensor(key: str) -> TrainingSensorDescription:
+    _, field, _ = rekorde.RECORDS[key]
+    units = {
+        "distance_km": (SensorDeviceClass.DISTANCE, UnitOfLength.KILOMETERS, 2),
+        "best_km_s": (SensorDeviceClass.DURATION, UnitOfTime.SECONDS, 0),
+        "elevation_up_m": (SensorDeviceClass.DISTANCE, UnitOfLength.METERS, 0),
+    }
+    device_class, unit, precision = units[field]
+    return TrainingSensorDescription(
+        key=f"record_{key}",
+        translation_key=f"record_{key}",
+        device_class=device_class,
+        native_unit_of_measurement=unit,
+        suggested_display_precision=precision,
+        value_fn=_record_value(key),
+        record=key,
+    )
+
+
+# Bestleistungen und Serien (E4). Ohne state_class: kein Messwert, der sich
+# ueber die Zeit sinnvoll mitteln oder summieren liesse.
+SENSORS += tuple(_record_sensor(key) for key in rekorde.RECORDS) + (
+    TrainingSensorDescription(
+        key="streak",
+        translation_key="streak",
+        native_unit_of_measurement=UnitOfTime.DAYS,
+        suggested_display_precision=0,
+        value_fn=_record_value(rekorde.STREAK),
+        week=True,
+    ),
+    TrainingSensorDescription(
+        key="streak_longest",
+        translation_key="streak_longest",
+        native_unit_of_measurement=UnitOfTime.DAYS,
+        suggested_display_precision=0,
+        value_fn=_record_value(rekorde.STREAK_LONGEST),
+        week=True,
+    ),
+)
+
+
+def pace_text(seconds: float | None) -> str | None:
+    """240 -> "4:00 min/km"."""
+    if not isinstance(seconds, (int, float)):
+        return None
+    minutes, rest = divmod(round(seconds), 60)
+    return f"{minutes}:{rest:02d} min/km"
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: TrainingConfigEntry,
@@ -369,6 +431,18 @@ class TrainingSensor(TrainingEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
+        if (key := self.entity_description.record) is not None:
+            record = rekorde.cached(self._store).get(key)
+            if not record:
+                return None
+            attributes = {
+                "workout_id": record["workout_id"],
+                "name": record["name"],
+                "start": record["start"],
+            }
+            if key.startswith("best_km"):
+                attributes["tempo"] = pace_text(record["value"])
+            return attributes
         if self.entity_description.key != "latest_start":
             return None
         latest = self._store.latest

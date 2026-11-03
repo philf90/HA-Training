@@ -14,7 +14,7 @@ dieser Integration. Home Assistant speichert die Trainings privat, zeigt das
 letzte Training und die Woche als Sensoren und meldet neue Trainings als
 Ereignis. Die mitgelieferte Karte zeichnet die Route auf einer Karte, nach
 Tempo oder Puls eingefärbt, mit gekoppeltem Verlauf und Kilometer-Tabelle.
-Version 0.1.14.
+Version 0.1.15.
 
 ## Inhalt
 
@@ -25,6 +25,8 @@ Version 0.1.14.
 - [Webhook mit Token absichern](#webhook-mit-token-absichern)
 - [Adresse oder Token erneuern](#adresse-oder-token-erneuern)
 - [Entitäten](#entitäten)
+- [Bestleistungen](#bestleistungen)
+- [Monat und Jahr (Langzeitstatistik)](#monat-und-jahr-langzeitstatistik)
 - [Karte „Training“](#karte-training)
 - [Training löschen](#training-löschen)
 - [GPX-Export](#gpx-export)
@@ -270,7 +272,17 @@ der Instanz; in einer deutschen Instanz z. B.:
 | `sensor.training_trainings_schwimmen_letzte_woche` | Anzahl Schwimmen der Vorwoche |
 | `sensor.training_distanz_schwimmen_letzte_woche` | km Schwimmen der Vorwoche |
 | `sensor.training_trainingszeit_schwimmen_letzte_woche` | Minuten Schwimmen der Vorwoche |
+| `sensor.training_langste_distanz_zu_fuss` | km, Bestleistung (siehe unten) |
+| `sensor.training_schnellster_kilometer_zu_fuss` | s, schnellster ganzer Kilometer; Attribut `tempo` z. B. „9:41 min/km“ |
+| `sensor.training_meiste_hohenmeter_zu_fuss` | m bergauf in einem Training |
+| `sensor.training_langste_distanz_radfahren` | km |
+| `sensor.training_schnellster_kilometer_radfahren` | s; Attribut `tempo` |
+| `sensor.training_meiste_hohenmeter_radfahren` | m |
+| `sensor.training_langste_distanz_schwimmen` | km |
+| `sensor.training_trainingsserie` | Tage in Folge mit Training, bis heute oder gestern |
+| `sensor.training_langste_trainingsserie` | längste Serie in Tagen |
 | `event.training_neues_training` | Ereignis `neues_training` je neuem Training |
+| `event.training_neue_bestleistung` | Ereignis `neue_bestleistung` je neuer Bestleistung |
 
 Die Summen „diese Woche“ haben `state_class: total` mit `last_reset` am Montag
 00:00. Die Summen „letzte Woche“ rechnen jederzeit neu und haben keine
@@ -306,6 +318,99 @@ actions:
         {{ trigger.to_state.attributes.distance_km | round(2) }} km ·
         {{ (trigger.to_state.attributes.duration_s / 60) | round(0) | int }} min ·
         Ø Puls {{ trigger.to_state.attributes.hr_avg | round(0) | int }}
+```
+
+## Bestleistungen
+
+Seit 0.1.15. Aus den Zusammenfassungen aller gespeicherten Trainings, auch
+älterer ohne Route, getrennt nach Sportart (siehe Karte):
+
+- **Längste Distanz** zu Fuß, Radfahren, Schwimmen.
+- **Schnellster Kilometer** zu Fuß und Radfahren: der schnellste ganze
+  Kilometer aus den Kilometer-Splits von Apple (Splits zwischen 950 und
+  1050 m, auf genau 1 km umgerechnet; der angefangene letzte Kilometer zählt
+  nicht). Den Wert speichert die Integration seit 0.1.15 in der
+  Zusammenfassung, weil die Splits mit der Route nach der Aufbewahrung
+  verschwinden. Ältere Trainings bekommen ihn beim ersten Start einmal
+  nachgetragen, solange sie ihre Route noch haben; ohne Route zählen sie hier
+  nicht.
+- **Meiste Höhenmeter** zu Fuß und Radfahren.
+- **Trainingsserie:** Tage in Folge mit mindestens einem Training, jede
+  Sportart, nach Ortszeit. Die laufende Serie zählt bis heute oder gestern,
+  fällt also morgens vor dem Training noch nicht auf 0. Dazu die längste
+  Serie.
+
+Die Sensoren tragen als Attribute `workout_id`, `name` und `start` des
+Trainings. Wird ein Training gelöscht, gilt die nächstbeste Leistung. Bei
+Gleichstand bleibt das frühere Training der Rekordhalter.
+
+Das Ereignis `event.training_neue_bestleistung` löst aus, wenn ein neues
+Training der letzten 24 Stunden eine Bestleistung übertrifft, nicht beim
+ersten Training einer Sportart und nicht beim ersten Abgleich mit alten
+Trainings. Attribute: `record` (z. B. `distance_foot`, `best_km_cycling`,
+`elevation_foot`, `streak_longest`), `value`, `previous`, `unit` und bei
+einem Training `workout_id`, `name`, `start`. Beispiel:
+
+```yaml
+triggers:
+  - trigger: state
+    entity_id: event.training_neue_bestleistung
+    not_from: [unavailable, unknown]
+actions:
+  - action: notify.mobile_app_iphone
+    data:
+      title: Neue Bestleistung
+      message: >-
+        {{ trigger.to_state.attributes.record }}:
+        {{ trigger.to_state.attributes.value }} {{ trigger.to_state.attributes.unit }}
+        (vorher {{ trigger.to_state.attributes.previous }})
+```
+
+## Monat und Jahr (Langzeitstatistik)
+
+Seit 0.1.15 schreibt die Integration externe Statistiken in den Recorder,
+stündlich nach dem Beginn jedes Trainings:
+
+| Statistik-ID | Inhalt |
+|---|---|
+| `ha_training:workouts` | Anzahl Trainings |
+| `ha_training:distance` | km, alle Sportarten |
+| `ha_training:duration` | aktive Minuten |
+| `ha_training:active_energy` | kcal |
+| `ha_training:distance_foot` | km zu Fuß |
+| `ha_training:distance_cycling` | km Radfahren |
+| `ha_training:distance_swimming` | km Schwimmen |
+
+Anders als die Sensoren „diese Woche“ sind sie rückwirkend richtig: Ein
+Training vom Sonntag, das erst am Montag ankommt, zählt in seiner Woche, und
+ein gelöschtes Training fehlt auch in vergangenen Monaten. Dafür schreibt die
+Integration nach jeder Änderung (gebündelt, nach 10 Sekunden Ruhe) und nach
+jedem Start die ganzen Reihen neu. Ohne Recorder entfällt das. Die Namen der
+Reihen richten sich nach der Sprache der Instanz.
+
+Anzeigen mit der Karte „Statistik“ (ein Wert) oder „Statistik-Diagramm“
+(Verlauf); beide nehmen laut Doku von Home Assistant eine externe
+Statistik-ID:
+
+```yaml
+type: statistic
+entity: ha_training:distance
+name: Distanz diesen Monat
+stat_type: change
+period:
+  calendar:
+    period: month      # day, week, month, year; offset: -1 = Vormonat
+```
+
+```yaml
+type: statistics-graph
+entities:
+  - ha_training:distance_foot
+  - ha_training:distance_cycling
+period: month
+stat_types: [change]
+chart_type: bar
+days_to_show: 365
 ```
 
 ## Karte „Training“
@@ -533,7 +638,11 @@ geht ohne Backup, dann prüft der Webhook den Token aber nicht mehr.
 
 ## Teststand
 
-- **0.1.x:** 236 automatische Tests. 0.1.14: Durchfahrten durch die
+- **0.1.x:** 264 automatische Tests. 0.1.15: Bestleistungen je Sportart
+  (ganze Kilometer, Gleichstand, Löschen), Serien nach Ortszeit, Ereignis nur
+  für neue Trainings mit Vorgänger-Rekord, Nachtrag des schnellsten
+  Kilometers, Langzeitstatistik mit echtem Recorder (Monate, Wochen mit
+  Nachzügler, Löschen, Metadaten, Bündelung). 0.1.14: Durchfahrten durch die
   Schutzzone ausgeblendet (mehrere Lücken, Meter je Lücke, Linie getrennt,
   GPX-Segmente, keine Marken aus der Lücke). 0.1.13: Schutzzone (Anfang und Ende
   gekürzt, Mitte sichtbar, ganz im Kreis leer, GPX für Admins ganz, für

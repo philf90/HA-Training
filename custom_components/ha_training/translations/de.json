@@ -59,6 +59,16 @@
             }
           }
         }
+      },
+      "new_record": {
+        "name": "Neue Bestleistung",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "neue_bestleistung": "Neue Bestleistung"
+            }
+          }
+        }
       }
     },
     "sensor": {
@@ -166,6 +176,33 @@
       },
       "last_week_duration_swimming": {
         "name": "Trainingszeit Schwimmen letzte Woche"
+      },
+      "record_distance_foot": {
+        "name": "Längste Distanz zu Fuß"
+      },
+      "record_best_km_foot": {
+        "name": "Schnellster Kilometer zu Fuß"
+      },
+      "record_elevation_foot": {
+        "name": "Meiste Höhenmeter zu Fuß"
+      },
+      "record_distance_cycling": {
+        "name": "Längste Distanz Radfahren"
+      },
+      "record_best_km_cycling": {
+        "name": "Schnellster Kilometer Radfahren"
+      },
+      "record_elevation_cycling": {
+        "name": "Meiste Höhenmeter Radfahren"
+      },
+      "record_distance_swimming": {
+        "name": "Längste Distanz Schwimmen"
+      },
+      "streak": {
+        "name": "Trainingsserie"
+      },
+      "streak_longest": {
+        "name": "Längste Trainingsserie"
       }
     }
   },

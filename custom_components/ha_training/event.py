@@ -1,26 +1,20 @@
-"""Ereignis "Neues Training", z. B. fuer eine Push-Nachricht mit der Zusammenfassung."""
+"""Ereignisse "Neues Training" und "Neue Bestleistung", z. B. fuer Push-Nachrichten."""
 
 from __future__ import annotations
 
-from datetime import timedelta
 from typing import Any
 
 from homeassistant.components.event import EventEntity
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
-from homeassistant.util import dt as dt_util
 
 from . import TrainingConfigEntry
-from .const import EVENT_NEW_WORKOUT, SIGNAL_UPDATED
+from .const import EVENT_NEW_RECORD, EVENT_NEW_WORKOUT, SIGNAL_RECORD, SIGNAL_UPDATED
 from .entity import TrainingEntity
-from .parser import parse_time
+from .rekorde import is_recent
 
 PARALLEL_UPDATES = 0
-# Beim ersten Abgleich schickt Health Auto Export oft Trainings mehrerer Wochen.
-# Ausgeloest wird nur fuer Trainings, die hoechstens so lange vorbei sind; die
-# aelteren landen trotzdem im Index und in den Sensoren.
-MAX_AGE = timedelta(hours=24)
 EVENT_KEYS = (
     "name",
     "start",
@@ -41,12 +35,7 @@ async def async_setup_entry(
     entry: TrainingConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    async_add_entities([NewWorkoutEvent(entry)])
-
-
-def is_recent(workout: dict[str, Any]) -> bool:
-    end = parse_time(workout.get("end")) or parse_time(workout.get("start"))
-    return end is not None and dt_util.now() - end <= MAX_AGE
+    async_add_entities([NewWorkoutEvent(entry), NewRecordEvent(entry)])
 
 
 class NewWorkoutEvent(TrainingEntity, EventEntity):
@@ -75,4 +64,49 @@ class NewWorkoutEvent(TrainingEntity, EventEntity):
             attributes = {key: workout.get(key) for key in EVENT_KEYS}
             attributes["workout_id"] = workout.get("id")
             self._trigger_event(EVENT_NEW_WORKOUT, attributes)
+            self.async_write_ha_state()
+
+
+# Einheit je Bestleistung (rekorde.RECORDS), fuer die Nachricht
+RECORD_UNITS = {
+    "distance": "km",
+    "best_km": "s",
+    "elevation": "m",
+    "streak_longest": "d",
+}
+
+
+class NewRecordEvent(TrainingEntity, EventEntity):
+    """Neue Bestleistung durch ein neues Training (E4).
+
+    Attribute: record (z. B. distance_cycling, best_km_foot, streak_longest),
+    value, previous, unit und beim Rekord eines Trainings workout_id, name,
+    start. Das erste Training einer Sportart loest nichts aus.
+    """
+
+    _attr_translation_key = "new_record"
+
+    def __init__(self, entry: TrainingConfigEntry) -> None:
+        super().__init__(entry, "new_record")
+        self._attr_event_types = [EVENT_NEW_RECORD]
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                f"{SIGNAL_RECORD}_{self._entry.entry_id}",
+                self._handle_records,
+            )
+        )
+
+    @callback
+    def _handle_records(self, records: list[dict[str, Any]]) -> None:
+        for record in records:
+            key = record["record"]
+            unit = next(
+                (u for prefix, u in RECORD_UNITS.items() if key.startswith(prefix)),
+                None,
+            )
+            self._trigger_event(EVENT_NEW_RECORD, {**record, "unit": unit})
             self.async_write_ha_state()
