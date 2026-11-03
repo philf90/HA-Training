@@ -165,11 +165,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: TrainingConfigEntry) -> 
 
 
 async def _async_after_start(hass: HomeAssistant, entry: TrainingConfigEntry) -> None:
-    """Einmal nach dem Start: schnellsten Kilometer nachtragen, Statistik neu."""
-    data = entry.runtime_data
-    if await data.store.async_backfill_best_km():
-        async_dispatcher_send(hass, f"{SIGNAL_UPDATED}_{entry.entry_id}", [])
-    data.statistics.schedule()
+    """Einmal nach dem Start: Statistik neu (Migration laeuft beim Laden)."""
+    entry.runtime_data.statistics.schedule()
 
 
 async def _async_handle_webhook(

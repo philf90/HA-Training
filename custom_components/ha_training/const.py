@@ -38,6 +38,8 @@ MAX_KEEP_DETAILS = 2000
 
 # Speicher unter .storage/ (nicht ueber /local/ erreichbar, siehe README).
 STORAGE_VERSION = 1
+# Index: 1.1 bis 0.1.21, 1.2 seit 0.1.22 (storage.IndexStore migriert)
+STORAGE_INDEX_MINOR = 2
 STORAGE_INDEX = f"{DOMAIN}.index"
 STORAGE_DETAIL = f"{DOMAIN}.detail"
 
