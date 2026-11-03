@@ -13,8 +13,8 @@ GPS-Route, Puls- und Tempoverlauf, Pausen und Kilometer-Splits an einen Webhook
 dieser Integration. Home Assistant speichert die Trainings privat, zeigt das
 letzte Training und die Woche als Sensoren und meldet neue Trainings als
 Ereignis. Die mitgelieferte Karte zeichnet die Route auf einer Karte, nach
-Tempo oder Puls eingefärbt, mit gekoppeltem Verlauf und Kilometer-Tabelle.
-Version 0.1.17.
+Tempo oder Puls eingefärbt, mit gekoppeltem Verlauf und Kilometer-Balken.
+Version 0.1.18.
 
 ## Inhalt
 
@@ -424,6 +424,7 @@ Dashboard-Ressource oder weitere HACS-Karten sind nicht nötig.
 type: custom:ha-training-card
 workout: latest      # oder die id eines Trainings (Attribut workout_id)
 color_by: speed      # oder heart_rate
+# sport: cycling     # optional: Filter beim Öffnen (foot, cycling, swimming, other)
 # optional, eigener Kachelserver statt OpenStreetMap:
 # tile_url: https://tiles.example.org/{z}/{x}/{y}.png
 # tile_attribution: © Beispiel-Karten
@@ -432,11 +433,21 @@ color_by: speed      # oder heart_rate
 - `workout` mit einer ID lädt genau dieses Training, auch wenn es älter als
   die letzten 30 ist. Gibt es die ID nicht (mehr), zeigt die Karte das neueste
   Training und einen Hinweis.
+- `sport` stellt den Filter nach Sportart beim Öffnen ein (siehe unten);
+  `all` und ein unbekannter Wert bedeuten „Alle“.
+- Alle Optionen lassen sich seit 0.1.18 auch im visuellen Editor des
+  Dashboards einstellen, ohne YAML. Das Formular zeichnet Home Assistant
+  selbst (`getConfigForm`); gewählte Werte stehen danach in der
+  Konfiguration, auch „Alle“ als `sport: all`.
 - `tile_url` muss mit `https://` beginnen und `{z}`, `{x}` und `{y}` enthalten,
   sonst nimmt die Karte OpenStreetMap. `tile_attribution` erscheint als Text
   unten rechts in der Karte (Quellenangabe des Anbieters).
 - Kopf mit Name, Datum, Uhrzeit und einer Auswahl der letzten 30 Trainings
   (dazu das fest eingestellte, wenn es älter ist).
+- Filter nach Sportart unter dem Kopf: „Alle“ und jede Sportart, von der es
+  Trainings gibt; er erscheint erst ab zwei Sportarten (oder wenn `sport`
+  gesetzt ist). Ein Tipp lädt das neueste Training dieser Sportart, die
+  Auswahl zeigt dann die letzten 30 davon.
 - Die Karte lädt von selbst neu, wenn ein Training dazukommt, sich ändert
   (z. B. später mit Route nachgeschickt) oder gelöscht wird und wenn sich die
   Einstellungen unter „Konfigurieren“ ändern.
@@ -466,10 +477,18 @@ color_by: speed      # oder heart_rate
 - Markiert sind Start, Ziel, Kilometer, Pausen und die Minute mit dem
   höchsten Puls. Kilometer-Marken stehen bis 20 km an jedem Kilometer, ab
   20 km alle 5 km, ab 50 km alle 10 km und ab 100 km alle 20 km. Nahe Marken werden zusammengefasst.
-- Puls (Ø mit Band min–max) und Tempo als zwei Diagramme mit gemeinsamer
-  Zeitachse; Tippen in ein Diagramm oder auf die Route zeigt dieselbe Stelle
-  überall.
-- Kilometer-Splits von Apple mit Zeit, min/km, km/h, Ø und max Puls.
+- Unterkarte „Verlauf“: Puls (Ø mit Band min–max) und Tempo als zwei
+  Diagramme mit gemeinsamer Zeitachse; Tippen in ein Diagramm oder auf die
+  Route zeigt dieselbe Stelle überall.
+- Unterkarte „Kilometer“ mit den Kilometer-Splits von Apple: ein Balken je
+  Kilometer, die Höhe ist das Tempo (der angefangene letzte Kilometer ist
+  schmaler), der schnellste ist hervorgehoben. Darüber schnellster und
+  langsamster ganzer Kilometer (zu Fuß min/km, beim Radfahren km/h). Bis 12
+  Kilometer steht der Wert über jedem Balken, darüber nur die Beschriftung
+  der Achse im Abstand der Kilometer-Marken. Ein Tipp auf einen Balken zeigt
+  die Mitte dieses Kilometers in Verlauf und Route. „Tabelle“ klappt die
+  Tabelle mit Zeit, min/km, km/h, Ø und max Puls auf (Standard zu; bei vielen
+  Kilometern scrollt sie mit festem Kopf).
 - Oben rechts „GPX“ (lädt die Route als Datei, siehe [GPX-Export](#gpx-export))
   und für Administratoren „Löschen“ (siehe [Training löschen](#training-löschen)).
   Auf schmalen Karten stehen beide in einer eigenen Zeile unter dem Titel.
@@ -489,6 +508,10 @@ Seit 0.1.17 eine eigene Karte, ebenfalls von der Integration ausgeliefert
 type: custom:ha-training-records-card
 sport: foot          # Start: foot, cycling oder swimming (optional)
 ```
+
+Die Option lässt sich auch im visuellen Editor einstellen; „Automatisch“
+steht dann als `sport: auto` in der Konfiguration und bedeutet dasselbe wie
+ohne Option.
 
 - Kopf mit Pokal, Titel und der Trainingsserie („Serie 1 Tag · längste 3
   Tage“).
@@ -559,6 +582,11 @@ freigegebene Konten nur den Teil außerhalb der Zone.
 HACS zeigt neue Versionen als Update an. Nach dem Herunterladen Home Assistant
 neu starten, danach einmal die Seite neu laden, in der Companion App den
 Frontend-Cache zurücksetzen.
+
+**Update auf 0.1.18:** keine Migration, nichts am Speicher geändert. Die
+Karte „Training“ zeigt Verlauf und Kilometer in eigenen Unterkarten, die
+Kilometer als Balken mit aufklappbarer Tabelle, dazu einen Filter nach
+Sportart; beide Karten haben einen visuellen Editor.
 
 **Update auf 0.1.11:** keine Migration. Distanz in Yards und Fuß, lesbare
 Achsen und weniger Kilometer-Marken bei langen Strecken; schon gespeicherte
@@ -665,7 +693,15 @@ geht ohne Backup, dann prüft der Webhook den Token aber nicht mehr.
 
 ## Teststand
 
-- **0.1.x:** 271 automatische Tests. 0.1.17: Karte „Bestleistungen“ (nur
+- **0.1.x:** 288 automatische Tests. 0.1.18: Kilometer-Balken (Werte bis 12
+  Kilometer, Achse bei langen Touren, schnellster und langsamster ganzer
+  Kilometer, km/h beim Rad), Tabelle zu bis zum Tipp und ohne Neuzeichnen der
+  Karte, Tipp auf einen Balken zeigt die Mitte des Kilometers, Filter nach
+  Sportart (nur ab zwei, Vorgabe aus `sport`, lädt das neueste Training,
+  Hinweis ohne Treffer), `ha_training/workouts` mit Sportart und Anzahl je
+  Sportart, visueller Editor beider Karten (Formular von Home Assistant,
+  Beschriftung in der Sprache der Oberfläche, `all`/`auto` wie ohne Option).
+  0.1.17: Karte „Bestleistungen“ (nur
   Sportarten mit Bestleistung, Rückfall, km/h beim Rad, Tipp öffnet den
   Sensor nur mit Entitäts-ID und nur per Klick, Enter oder Leertaste, Neuladen
   bei Änderung), Karte „Training“ ohne Abruf der Bestleistungen. 0.1.16:

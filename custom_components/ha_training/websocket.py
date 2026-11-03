@@ -26,7 +26,7 @@ from .const import (
 )
 from .gpx import build_gpx, filename
 from .privacy import apply_zone
-from .sport import sport_of
+from .sport import GROUPS, OTHER, sport_of
 
 if TYPE_CHECKING:
     from . import TrainingConfigEntry
@@ -123,22 +123,34 @@ def ws_records(
         vol.Required("type"): f"{DOMAIN}/workouts",
         vol.Optional("entry_id"): str,
         vol.Optional("limit", default=50): vol.All(int, vol.Range(1, MAX_LIST)),
+        # Nur Trainings dieser Sportgruppe (E2, Filter der Karte)
+        vol.Optional("sport"): vol.In([*GROUPS, OTHER]),
     }
 )
 @callback
 def ws_workouts(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
 ) -> None:
-    """Zusammenfassungen, neuestes Training zuerst."""
+    """Zusammenfassungen, neuestes Training zuerst.
+
+    "sports": Anzahl aller gespeicherten Trainings je Sportgruppe, damit die
+    Karte ihren Filter nur mit vorhandenen Sportarten zeigt.
+    """
     entry = _entry(hass, msg.get("entry_id"))
     if entry is None:
         connection.send_error(msg["id"], "not_found", "Kein Eintrag geladen")
         return
-    workouts = [
-        _with_sport(w) for w in entry.runtime_data.store.workouts[: msg["limit"]]
-    ]
+    sports: dict[str, int] = {}
+    workouts: list[dict[str, Any]] = []
+    wanted = msg.get("sport")
+    for summary in entry.runtime_data.store.workouts:
+        item = _with_sport(summary)
+        sports[item["sport"]] = sports.get(item["sport"], 0) + 1
+        if len(workouts) < msg["limit"] and wanted in (None, item["sport"]):
+            workouts.append(item)
     connection.send_result(
-        msg["id"], {"entry_id": entry.entry_id, "workouts": workouts}
+        msg["id"],
+        {"entry_id": entry.entry_id, "workouts": workouts, "sports": sports},
     )
 
 

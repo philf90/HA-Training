@@ -21,6 +21,8 @@
  *   entry_id: ...          # nur bei mehreren Eintraegen noetig
  *   tile_url: https://...{z}/{x}/{y}.png   # eigener Kachelserver (Standard OSM)
  *   tile_attribution: ...  # Quellenangabe dazu, als Text
+ *   sport: cycling         # Filter vorstellen: foot, cycling, swimming, other
+ * Alle Optionen gibt es auch im visuellen Editor (getConfigForm).
  *
  * Leaflet 1.9.4 liefert die Integration unter /ha_training/leaflet/ mit
  * (BSD-2-Lizenz, siehe leaflet/LICENSE). Kartenkacheln: OpenStreetMap, im
@@ -37,7 +39,7 @@
  * damit sie zu den Splits passen.
  */
 
-const VERSION = "0.1.17";
+const VERSION = "0.1.18";
 const LEAFLET = "/ha_training/leaflet";
 const OSM_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>';
@@ -58,6 +60,7 @@ function tileSource(config) {
 
 // Sportgruppe kommt von der Integration (sport.py, aus dem Namen erkannt).
 // Ohne Angabe (aeltere Integration) wie bisher: Gehen.
+const SPORT_GROUPS = ["foot", "cycling", "swimming", "other"];
 const SPORT_ICONS = { foot: "mdi:walk", cycling: "mdi:bike", swimming: "mdi:swim", other: "mdi:heart-pulse" };
 
 // Karte "Bestleistungen": Sportarten und ihre Bestleistungen (rekorde.py)
@@ -86,7 +89,9 @@ const TEXT = {
     perKm: "min/km", appleEffort: "Apple-Schätzung", gpsRoute: "GPS-Route", min: "min", max: "max",
     noData: "keine Daten", height: "Höhe", humidity: "Luftfeuchte", temperature: "Temperatur",
     records: "Bestleistungen", streak: "Serie", longest: "längste", day: "Tag", days: "Tage",
-    sport_foot: "Zu Fuß", sport_cycling: "Radfahren", sport_swimming: "Schwimmen",
+    sport_foot: "Zu Fuß", sport_cycling: "Radfahren", sport_swimming: "Schwimmen", sport_other: "Sonstige", sport_all: "Alle",
+    sportFilter: "Sportart", noneSport: "Noch keine Trainings dieser Sportart.", table: "Tabelle", tableHide: "Tabelle ausblenden",
+    fastestKm: "schnellster km", slowestKm: "langsamster km", splitsCount: "Abschnitte", splitBar: "Abschnitt",
     rec_distance: "Längste Distanz", rec_pace: "Schnellster Kilometer", rec_speed: "Schnellster Kilometer", rec_elevation: "Meiste Höhenmeter",
     noRecords: "Noch keine Bestleistungen. Sie entstehen aus den Trainings zu Fuß, auf dem Rad und im Wasser.", noValue: "noch kein Wert",
     zone: "Schutzzone", zoneNote: "Teile der Route im Umkreis von {r} m um Zuhause sind ausgeblendet (Schutzzone, Einstellung der Integration).",
@@ -114,7 +119,9 @@ const TEXT = {
     perKm: "min/km", appleEffort: "Apple estimate", gpsRoute: "GPS route", min: "min", max: "max",
     noData: "no data", height: "Altitude", humidity: "humidity", temperature: "Temperature",
     records: "Personal bests", streak: "Streak", longest: "longest", day: "day", days: "days",
-    sport_foot: "On foot", sport_cycling: "Cycling", sport_swimming: "Swimming",
+    sport_foot: "On foot", sport_cycling: "Cycling", sport_swimming: "Swimming", sport_other: "Other", sport_all: "All",
+    sportFilter: "Sport", noneSport: "No workouts of this sport yet.", table: "Table", tableHide: "Hide table",
+    fastestKm: "fastest km", slowestKm: "slowest km", splitsCount: "splits", splitBar: "Split",
     rec_distance: "Longest distance", rec_pace: "Fastest kilometre", rec_speed: "Fastest kilometre", rec_elevation: "Most elevation",
     noRecords: "No personal bests yet. They come from workouts on foot, cycling and swimming.", noValue: "no value yet",
     zone: "Privacy zone", zoneNote: "Parts of the route within {r} m of home are hidden (privacy zone, setting of the integration).",
@@ -294,12 +301,22 @@ class HaTrainingCard extends HTMLElement {
     this._config = { workout: "latest", color_by: "speed", ...(config || {}) };
     this._colorBy = this._config.color_by === "heart_rate" ? "heart_rate" : "speed";
     this._selected = this._config.workout && this._config.workout !== "latest" ? this._config.workout : null;
+    // Filter nach Sportart (E2); "sport" in der Konfiguration stellt ihn vor
+    this._sportFilter = SPORT_GROUPS.includes(this._config.sport) ? this._config.sport : null;
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
     this._renderShell();
   }
 
   getCardSize() {
     return 14;
+  }
+
+  getGridOptions() {
+    return { columns: 12, min_columns: 6 };
+  }
+
+  static getConfigForm() {
+    return trainingCardForm();
   }
 
   set hass(hass) {
@@ -379,9 +396,11 @@ class HaTrainingCard extends HTMLElement {
     if (!this._hass) return;
     const request = { type: "ha_training/workouts", limit: 30 };
     if (this._config.entry_id) request.entry_id = this._config.entry_id;
+    if (this._sportFilter) request.sport = this._sportFilter;
     try {
       const result = await this._hass.callWS(request);
       this._workouts = result.workouts || [];
+      this._sports = result.sports || {};
       this._error = null;
     } catch (err) {
       this._workouts = [];
@@ -397,7 +416,7 @@ class HaTrainingCard extends HTMLElement {
       this._message = "missing";
     }
     if (latest) await this._loadWorkout(latest);
-    else this._render();
+    else { this._summary = null; this._current = null; this._prepare(null); this._render(); }
   }
 
   async _fetchRecords() {
@@ -442,6 +461,7 @@ class HaTrainingCard extends HTMLElement {
   // Details in Punkte umwandeln: Tempo geglaettet, Puls je Punkt aus dem Verlauf
   _prepare(detail) {
     this._detail = detail;
+    this._splitPicked = null;
     this._points = [];
     this._dFactor = 1;
     this._gpsTotal = null;
@@ -506,6 +526,25 @@ class HaTrainingCard extends HTMLElement {
         .wert .w small { font-size: 0.62em; color: var(--nachtblau-text-sekundaer, #8794a5); font-weight: 600; margin-left: 3px; }
         .wert .z { font-size: 11px; color: var(--nachtblau-text-sekundaer, #8794a5); margin-top: 2px; }
         .abschnitt { margin-top: 16px; }
+        .unterkarte { margin-top: 12px; background: var(--nachtblau-unterkachel, rgba(255, 255, 255, 0.028)); border: 1px solid var(--nachtblau-unterkachel-rand, rgba(255, 255, 255, 0.06)); border-radius: 14px; padding: 12px; }
+        .km-kopf { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+        .km-kopf .titel { flex: 1 1 auto; }
+        .km-kopf .unter { font-size: 11.5px; margin-top: 2px; }
+        .knopf { all: unset; flex: none; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--nachtblau-text-sekundaer, #8794a5); padding: 6px 12px; border-radius: 9px; border: 1px solid var(--nachtblau-unterkachel-rand, rgba(255, 255, 255, 0.06)); background: var(--nachtblau-flaeche-vertieft, #10151d); }
+        .balkenreihe { display: flex; align-items: flex-end; gap: 2px; height: 64px; }
+        .balkenreihe.mitwert { height: 76px; }
+        .balken { all: unset; box-sizing: border-box; flex: 1 1 0; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: stretch; gap: 3px; cursor: pointer; }
+        .balken .v { font-size: 10px; color: var(--nachtblau-text-sekundaer, #8794a5); text-align: center; white-space: nowrap; overflow: hidden; font-variant-numeric: tabular-nums; }
+        .balken .b { display: block; border-radius: 3px 3px 1px 1px; background: color-mix(in srgb, var(--nachtblau-blau, #7fb3d5) 70%, transparent); }
+        .balken.schnell .b { background: var(--nachtblau-rose, #e6a0c4); }
+        .balken[aria-pressed="true"] .b { outline: 2px solid var(--nachtblau-text, #f2f5f8); outline-offset: 1px; }
+        .balken:focus-visible .b { outline: 2px solid var(--nachtblau-rose, #e6a0c4); outline-offset: 1px; }
+        .km-achse { display: flex; gap: 2px; margin-top: 4px; }
+        .km-achse span { flex: 1 1 0; min-width: 0; text-align: center; font-size: 10.5px; color: var(--nachtblau-text-sekundaer, #8794a5); white-space: nowrap; overflow: visible; }
+        .tabelle { max-height: 300px; overflow-y: auto; margin-top: 8px; }
+        .tabelle th { position: sticky; top: 0; background: var(--nachtblau-flaeche-erhoeht, #1c2331); }
+        .schalter.filter { display: flex; width: 100%; box-sizing: border-box; margin-bottom: 12px; }
+        .schalter.filter button { flex: 1 1 0; text-align: center; padding: 7px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .zeile { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
         h3 { margin: 0; font-size: 13px; font-weight: 700; }
         .schalter { display: inline-flex; background: var(--nachtblau-flaeche-vertieft, #10151d); border: 1px solid var(--nachtblau-unterkachel-rand, rgba(255, 255, 255, 0.06)); border-radius: 12px; padding: 3px; gap: 3px; }
@@ -544,7 +583,11 @@ class HaTrainingCard extends HTMLElement {
     this._removeMap();
     if (this._error) { root.innerHTML = `<div class="hinweis">${this._t("noEntry")}</div>`; return; }
     if (!this._workouts) { root.innerHTML = `<div class="hinweis">${this._t("loading")}</div>`; return; }
-    if (!this._summary) { root.innerHTML = `<div class="hinweis">${this._t("none")}</div>`; return; }
+    if (!this._summary) {
+      root.innerHTML = this._filterBar() + `<div class="hinweis">${this._t(this._sportFilter ? "noneSport" : "none")}</div>`;
+      this._bindFilter(root);
+      return;
+    }
     const s = this._summary;
     const start = Date.parse(s.start) / 1000, end = s.end ? Date.parse(s.end) / 1000 : null;
     const date = new Date(start * 1000).toLocaleDateString(this._locale(), { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric", timeZone: this._hass.config?.time_zone });
@@ -593,6 +636,7 @@ class HaTrainingCard extends HTMLElement {
           ${this._isAdmin() ? `<button type="button" data-a="del" data-confirm="${Boolean(this._confirmDelete)}">${this._t(this._confirmDelete ? "delConfirm" : "del")}</button>` : ""}
         </div>` : ""}
       </div>
+      ${this._filterBar()}
       ${this._message ? `<div class="meldung" role="status">${this._t(this._message)}</div>` : ""}
       <div class="werte">${tiles.map(([l, w, u, z]) => `<div class="wert"><div class="l">${l}</div><div class="w">${w}<small>${u}</small></div><div class="z">${z}</div></div>`).join("")}</div>
       ${!this._detail ? `<div class="hinweis">${this._t(this._hidden ? "hidden" : "pruned")}</div>` : ""}
@@ -609,24 +653,22 @@ class HaTrainingCard extends HTMLElement {
         <div class="legende" id="legende"></div>
       </div>` : ""}
       ${this._detail && (hasRoute || hasHr) ? `
-      <div class="abschnitt">
+      <section class="unterkarte">
         <h3>${this._t("course")}</h3>
         <div class="anzeige" id="anzeige">${this._t("hint")}</div>
         ${hasHr ? `<div class="diagramm"><div class="t">${this._t("hrChart")}</div><svg id="dHr" height="140"></svg></div>` : ""}
         ${hasRoute ? `<div class="diagramm"><div class="t">${this._t("speedChart")}</div><svg id="dSpeed" height="120"></svg></div>` : ""}
-      </div>` : ""}
-      ${(this._detail?.splits || []).length ? `
-      <div class="abschnitt">
-        <h3 style="margin-bottom:6px">${this._t("splits")}</h3>
-        <table><thead><tr><th>${this._t("section")}</th><th>${this._t("time")}</th><th>${this._t("pace")}</th><th>${this._t("hrAvgShort")}</th><th>${this._t("hrMaxShort")}</th></tr></thead>
-        <tbody>${this._splitRows()}</tbody></table>
-      </div>` : ""}`;
+      </section>` : ""}
+      ${this._splitsSection()}`;
     root.querySelector("select")?.addEventListener("change", (e) => { this._selected = e.target.value; this._resetActions(); this._loadWorkout(e.target.value); });
     root.querySelector('[data-a="gpx"]')?.addEventListener("click", () => this._exportGpx());
     root.querySelector('[data-a="del"]')?.addEventListener("click", () => this._deleteClick());
-    root.querySelectorAll(".schalter button").forEach((b) => b.addEventListener("click", () => {
+    this._bindFilter(root);
+    root.querySelector('[data-a="tabelle"]')?.addEventListener("click", () => this._toggleTable(root));
+    root.querySelectorAll("[data-km]").forEach((b) => b.addEventListener("click", () => this._pickSplit(Number(b.dataset.km))));
+    root.querySelectorAll(".schalter:not(.filter) button").forEach((b) => b.addEventListener("click", () => {
       this._colorBy = b.dataset.m;
-      root.querySelectorAll(".schalter button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+      root.querySelectorAll(".schalter:not(.filter) button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
       this._drawRoute();
     }));
     this._charts = [];
@@ -716,6 +758,114 @@ class HaTrainingCard extends HTMLElement {
 
   _escape(text) {
     return String(text ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  // Filter nach Sportart: nur wenn es mehr als eine gibt oder einer gesetzt ist
+  _filterBar() {
+    const present = SPORT_GROUPS.filter((g) => (this._sports || {})[g] > 0);
+    if (present.length < 2 && !this._sportFilter) return "";
+    const buttons = [[null, "sport_all"], ...present.map((g) => [g, `sport_${g}`])];
+    return `<div class="schalter filter" role="group" aria-label="${this._t("sportFilter")}">${buttons.map(([g, key]) =>
+      `<button type="button" data-f="${g || ""}" aria-pressed="${(g || null) === (this._sportFilter || null)}">${this._t(key)}</button>`).join("")}</div>`;
+  }
+
+  _bindFilter(root) {
+    root.querySelectorAll("[data-f]").forEach((b) => b.addEventListener("click", () => {
+      const sport = b.dataset.f || null;
+      if (sport === this._sportFilter) return;
+      // Neue Sportart: neuestes Training davon statt der bisherigen Auswahl
+      this._sportFilter = sport;
+      this._selected = null;
+      this._message = null;
+      this._resetActions();
+      this._loadList();
+    }));
+  }
+
+  // Kilometer-Splits mit Strecke und Tempo; letzte Zeile ggf. angefangen
+  _splitList() {
+    let sum = 0;
+    return (this._detail?.splits || []).map((sp, i) => {
+      const from = sum;
+      sum += sp.distance_m || 0;
+      const speed = sp.distance_m && sp.active_s ? (sp.distance_m / sp.active_s) * 3.6 : sp.speed_kmh;
+      const pace = sp.distance_m ? sp.active_s / (sp.distance_m / 1000) : null;
+      const full = !sp.distance_m || sp.distance_m >= 950;
+      return { i, sp, from: from / 1000, to: sum / 1000, speed, pace, full };
+    });
+  }
+
+  _splitValue(row, cycling) {
+    return cycling ? `${this._num(row.speed, 1)} km/h` : (row.pace ? `${this._duration(row.pace)} ${this._t("perKm")}` : "–");
+  }
+
+  // Variante C: Balken je Kilometer (Hoehe = Tempo), Zusammenfassung und eine
+  // aufklappbare Tabelle (Standard zu). Bis 12 Abschnitte mit Wert ueber dem
+  // Balken, darueber nur Beschriftung alle paar Kilometer.
+  _splitsSection() {
+    const rows = this._splitList();
+    if (!rows.length) return "";
+    const cycling = this._summary?.sport === "cycling";
+    const speeds = rows.map((r) => r.speed).filter((v) => v > 0);
+    const max = speeds.length ? Math.max(...speeds) : 0;
+    const ranked = rows.filter((r) => r.full && r.speed > 0);
+    const fast = ranked.reduce((a, b) => (!a || b.speed > a.speed ? b : a), null);
+    const slow = ranked.reduce((a, b) => (!a || b.speed < a.speed ? b : a), null);
+    const label = (r) => (Number.isInteger(Math.round(r.to * 1000) / 1000) ? this._num(r.to, 0) : this._num(r.to, 1));
+    const summary = fast && slow && ranked.length > 1
+      ? `${this._t("fastestKm")} ${label(fast)}: ${this._splitValue(fast, cycling)} · ${this._t("slowestKm")} ${label(slow)}: ${this._splitValue(slow, cycling)}`
+      : `${rows.length} ${this._t("splitsCount")}`;
+    const withValues = rows.length <= 12;
+    const step = rows.length < 20 ? 1 : kmMarkStep(rows.length);
+    const bars = rows.map((r) => {
+      const h = max > 0 && r.speed > 0 ? Math.max(3, Math.round((r.speed / max) * (withValues ? 52 : 60))) : 3;
+      const grow = r.full ? 1 : Math.max(0.2, (r.sp.distance_m || 0) / 1000);
+      const value = cycling ? this._num(r.speed, 1) : (r.pace ? this._duration(r.pace) : "–");
+      return `<button type="button" class="balken${r === fast ? " schnell" : ""}" data-km="${r.i}" style="flex-grow:${grow}" aria-pressed="${this._splitPicked === r.i}" aria-label="${this._t("splitBar")} ${label(r)} km: ${this._splitValue(r, cycling)}">${withValues ? `<span class="v">${value}</span>` : ""}<span class="b" style="height:${h}px"></span></button>`;
+    }).join("");
+    const axis = rows.map((r) => {
+      const grow = r.full ? 1 : Math.max(0.2, (r.sp.distance_m || 0) / 1000);
+      const k = Math.round(r.to);
+      const show = withValues || (r.full && k % step === 0);
+      return `<span style="flex-grow:${grow}">${show ? label(r) : ""}</span>`;
+    }).join("");
+    const open = Boolean(this._splitsOpen);
+    return `
+      <section class="unterkarte">
+        <div class="km-kopf">
+          <div class="titel"><h3>${this._t("splits")}</h3><div class="unter">${summary}</div></div>
+          <button type="button" class="knopf" data-a="tabelle" aria-expanded="${open}">${this._t(open ? "tableHide" : "table")}</button>
+        </div>
+        <div class="balkenreihe${withValues ? " mitwert" : ""}" role="group" aria-label="${this._t("splits")}">${bars}</div>
+        <div class="km-achse" aria-hidden="true">${axis}</div>
+        <div class="tabelle-platz">${open ? this._tableHtml() : ""}</div>
+      </section>`;
+  }
+
+  _tableHtml() {
+    return `<div class="tabelle"><table><thead><tr><th>${this._t("section")}</th><th>${this._t("time")}</th><th>${this._t("pace")}</th><th>${this._t("hrAvgShort")}</th><th>${this._t("hrMaxShort")}</th></tr></thead>
+        <tbody>${this._splitRows()}</tbody></table></div>`;
+  }
+
+  // Tabelle auf- und zuklappen, ohne die Karte neu zu zeichnen (Leaflet behielte
+  // sonst weder Ausschnitt noch Zoom)
+  _toggleTable(root) {
+    this._splitsOpen = !this._splitsOpen;
+    const button = root.querySelector('[data-a="tabelle"]');
+    const place = root.querySelector(".tabelle-platz");
+    if (!button || !place) return;
+    button.setAttribute("aria-expanded", String(this._splitsOpen));
+    button.textContent = this._t(this._splitsOpen ? "tableHide" : "table");
+    place.innerHTML = this._splitsOpen ? this._tableHtml() : "";
+  }
+
+  // Tipp auf einen Balken: Mitte des Abschnitts in Verlauf und Route zeigen
+  _pickSplit(i) {
+    const sp = (this._detail?.splits || [])[i];
+    if (!sp) return;
+    this._splitPicked = i;
+    this.shadowRoot?.querySelectorAll?.("[data-km]").forEach((b) => b.setAttribute("aria-pressed", String(Number(b.dataset.km) === i)));
+    if (sp.start != null && sp.end != null) this._showTime((sp.start + sp.end) / 2);
   }
 
   _splitRows() {
@@ -1002,6 +1152,10 @@ class HaTrainingRecordsCard extends HaTrainingCard {
     return {};
   }
 
+  static getConfigForm() {
+    return recordsCardForm();
+  }
+
   setConfig(config) {
     this._config = { ...(config || {}) };
     this._sport = this._config.sport || null;
@@ -1122,6 +1276,55 @@ class HaTrainingRecordsCard extends HaTrainingCard {
   }
 }
 
+// Visueller Editor (V5) fuer beide Karten ueber getConfigForm(): Home
+// Assistant zeichnet das Formular selbst (Doku „Card editor and picker“). Die
+// Werte landen unveraendert in der Konfiguration; „all“ und „auto“ bedeuten
+// dasselbe wie ohne Option. Beschriftung in der Sprache der Oberflaeche
+// (Home Assistant setzt lang am <html>-Element).
+const EDITOR_TEXT = {
+  de: {
+    workout: "Training (latest = das neueste, sonst die ID)", color_by: "Route einfärben nach", sport: "Sportart",
+    tile_url: "Eigener Kachelserver (https://…/{z}/{x}/{y}.png, leer = OpenStreetMap)", tile_attribution: "Quellenangabe des Kachelservers",
+    start_sport: "Sportart beim Öffnen", speed: "Tempo", heart_rate: "Puls", all: "Alle", auto: "Automatisch (erste mit Bestleistung)",
+    foot: "Zu Fuß", cycling: "Radfahren", swimming: "Schwimmen", other: "Sonstige",
+  },
+  en: {
+    workout: "Workout (latest = newest, else its id)", color_by: "Colour route by", sport: "Sport",
+    tile_url: "Own tile server (https://…/{z}/{x}/{y}.png, empty = OpenStreetMap)", tile_attribution: "Attribution of the tile server",
+    start_sport: "Sport when opened", speed: "Speed", heart_rate: "Heart rate", all: "All", auto: "Automatic (first with a personal best)",
+    foot: "On foot", cycling: "Cycling", swimming: "Swimming", other: "Other",
+  },
+};
+
+function editorText(key) {
+  const lang = (globalThis.document?.querySelector?.("html")?.getAttribute?.("lang") || "en").slice(0, 2);
+  return (EDITOR_TEXT[lang] || EDITOR_TEXT.en)[key] ?? key;
+}
+
+function editorSelect(values) {
+  return { select: { mode: "dropdown", options: values.map(([value, key]) => ({ value, label: editorText(key) })) } };
+}
+
+function trainingCardForm() {
+  return {
+    schema: [
+      { name: "workout", selector: { text: {} } },
+      { name: "color_by", selector: editorSelect([["speed", "speed"], ["heart_rate", "heart_rate"]]) },
+      { name: "sport", selector: editorSelect([["all", "all"], ...SPORT_GROUPS.map((g) => [g, g])]) },
+      { name: "tile_url", selector: { text: {} } },
+      { name: "tile_attribution", selector: { text: {} } },
+    ],
+    computeLabel: (field) => editorText(field.name),
+  };
+}
+
+function recordsCardForm() {
+  return {
+    schema: [{ name: "sport", selector: editorSelect([["auto", "auto"], ["foot", "foot"], ["cycling", "cycling"], ["swimming", "swimming"]]) }],
+    computeLabel: (field) => editorText(field.name === "sport" ? "start_sport" : field.name),
+  };
+}
+
 if (!customElements.get("ha-training-card")) {
   customElements.define("ha-training-card", HaTrainingCard);
   window.customCards = window.customCards || [];
@@ -1129,7 +1332,7 @@ if (!customElements.get("ha-training-card")) {
     type: "ha-training-card",
     name: "Training",
     description: "Training der Apple Watch: Kennzahlen, Route nach Tempo oder Puls, Verlauf und Kilometer.",
-    preview: false,
+    preview: true,
   });
 }
 
@@ -1140,6 +1343,6 @@ if (!customElements.get("ha-training-records-card")) {
     type: "ha-training-records-card",
     name: "Training: Bestleistungen",
     description: "Bestleistungen je Sportart (längste Distanz, schnellster Kilometer, Höhenmeter) und Trainingsserie.",
-    preview: false,
+    preview: true,
   });
 }
