@@ -8,14 +8,18 @@ Live 03.11.2026 (Fahrt "Outdoor Radfahren"): km 3 mit 1000 m, active_s 38
 
 from __future__ import annotations
 
+from datetime import date
+
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
 from custom_components.ha_training.parser import (
     BEST_KM_VERSION,
     best_km,
+    best_km_split,
     parse_workout,
 )
+from custom_components.ha_training.rekorde import compute
 
 from .conftest import payload, post, workout
 from .test_rekorde import RECORDS, _records_card
@@ -121,3 +125,100 @@ def test_records_card_matches_bars():
     }
     html = _records_card(records=records, config={"sport": "cycling"})["html1"]
     assert "95,4<small>km/h</small>" in html
+
+
+# 0.1.21: Live nach 0.1.20 stand 37,756 s im Speicher. Das passt nur zu
+# Apples Tempo 95,35 km/h (95,34 -> 37,760 s, 95,36 -> 37,752 s). Die Balken
+# runden 95,35 zu 95,4, aus den Sekunden zurueckgerechnet wurde 95,349 -> 95,3.
+LIVE_9535 = {"distance_m": 1000.0, "active_s": 38, "speed_kmh": 95.35}
+
+
+def test_split_gives_seconds_and_apple_speed():
+    assert best_km_split([LIVE_9535], use_speed=True) == (37.756, 95.35)
+    # Zu Fuss und ohne Tempo von Apple: kein km/h
+    assert best_km_split([LIVE_9535]) == (38.0, None)
+    assert best_km_split([{**LIVE_9535, "speed_kmh": None}], use_speed=True) == (
+        38.0,
+        None,
+    )
+    # km/h gehoert zum schnellsten Kilometer
+    slow = {"distance_m": 1000.0, "active_s": 72, "speed_kmh": 50.1}
+    assert best_km_split([slow, LIVE_9535], use_speed=True) == (37.756, 95.35)
+    assert best_km_split([], use_speed=True) == (None, None)
+
+
+def test_parser_stores_speed_for_cycling_only():
+    walk, _ = parse_workout(workout())
+    ride, _ = parse_workout(workout("R", name="Outdoor Radfahren"))
+    # Testtraining: Apples Tempo des ersten km 1,25 m/s = 4,5 km/h
+    assert ride["best_km_kmh"] == 4.5
+    assert walk["best_km_kmh"] is None
+
+
+def test_record_carries_speed():
+    ride = {
+        "id": "R",
+        "name": "Outdoor Radfahren",
+        "start": "2026-11-03T08:11:44+01:00",
+        "best_km_s": 37.756,
+        "best_km_kmh": 95.35,
+    }
+    walk = {
+        "id": "G",
+        "name": "Outdoor Spaziergang",
+        "start": "2026-10-31T15:30:04+01:00",
+        "best_km_s": 1243.0,
+        "best_km_kmh": None,
+    }
+    result = compute([ride, walk], date(2026, 11, 3))
+    assert result["best_km_cycling"]["kmh"] == 95.35
+    assert "kmh" not in result["best_km_foot"]
+    # Distanz und Hoehenmeter ohne km/h
+    assert (
+        "kmh"
+        not in (
+            compute([{**ride, "distance_km": 7.6}], date(2026, 11, 3))[
+                "distance_cycling"
+            ]
+        )
+    )
+
+
+def test_records_card_uses_apple_speed():
+    rec = {**RECORDS["best_km_cycling"], "value": 37.756}
+    with_kmh = {**RECORDS, "best_km_cycling": {**rec, "kmh": 95.35}}
+    html = _records_card(records=with_kmh, config={"sport": "cycling"})["html1"]
+    assert "95,4<small>km/h</small>" in html
+    # Ohne km/h (aelterer Stand): aus den Sekunden, wie bis 0.1.20
+    html = _records_card(
+        records={**RECORDS, "best_km_cycling": rec}, config={"sport": "cycling"}
+    )["html1"]
+    assert "95,3<small>km/h</small>" in html
+
+
+async def test_backfill_adds_speed(hass: HomeAssistant, entry, hass_client):
+    store = entry.runtime_data.store
+    await post(hass_client, payload(workout("R", name="Outdoor Radfahren")))
+    # Wie unter 0.1.20 gespeichert: Sekunden, aber ohne km/h
+    del store.workouts[0]["best_km_kmh"]
+    store.best_km_version = 2
+    assert await store.async_backfill_best_km() == 1
+    assert store.workouts[0]["best_km_kmh"] == 4.5
+    assert store.best_km_version == 3 == BEST_KM_VERSION
+    response = await post(hass_client, payload(workout("R", name="Outdoor Radfahren")))
+    assert (await response.json())["geaendert"] == 0
+
+
+async def test_sensor_attribute_speed(hass: HomeAssistant, entry, hass_client):
+    await post(hass_client, payload(workout("R", name="Outdoor Radfahren")))
+    await post(hass_client, payload(workout("G")))
+    await hass.async_block_till_done()
+    registry = er.async_get(hass)
+    ride = registry.async_get_entity_id(
+        "sensor", "ha_training", f"{entry.entry_id}_record_best_km_cycling"
+    )
+    walk = registry.async_get_entity_id(
+        "sensor", "ha_training", f"{entry.entry_id}_record_best_km_foot"
+    )
+    assert hass.states.get(ride).attributes["speed_kmh"] == 4.5
+    assert "speed_kmh" not in hass.states.get(walk).attributes

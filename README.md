@@ -14,7 +14,7 @@ dieser Integration. Home Assistant speichert die Trainings privat, zeigt das
 letzte Training und die Woche als Sensoren und meldet neue Trainings als
 Ereignis. Die mitgelieferte Karte zeichnet die Route auf einer Karte, nach
 Tempo oder Puls eingefärbt, mit gekoppeltem Verlauf und Kilometer-Balken.
-Version 0.1.20.
+Version 0.1.21.
 
 ## Inhalt
 
@@ -277,7 +277,7 @@ der Instanz; in einer deutschen Instanz z. B.:
 | `sensor.training_schnellster_kilometer_zu_fuss` | s, schnellster ganzer Kilometer; Attribut `tempo` z. B. „9:41 min/km“ |
 | `sensor.training_meiste_hohenmeter_zu_fuss` | m bergauf in einem Training |
 | `sensor.training_langste_distanz_radfahren` | km |
-| `sensor.training_schnellster_kilometer_radfahren` | s; Attribut `tempo` |
+| `sensor.training_schnellster_kilometer_radfahren` | s; Attribute `tempo` und `speed_kmh` (Tempo von Apple, z. B. 95,35) |
 | `sensor.training_meiste_hohenmeter_radfahren` | m |
 | `sensor.training_langste_distanz_schwimmen` | km |
 | `sensor.training_trainingsserie` | Tage in Folge mit Training, bis heute oder gestern |
@@ -338,8 +338,11 @@ Seit 0.1.15. Aus den Zusammenfassungen aller gespeicherten Trainings, auch
   (wie die Balken der Karte „Training“), zu Fuß weiter die aktive Zeit (wie
   min/km in der Karte); der Sensor zeigt eine Nachkommastelle. Die aktive
   Zeit speichert die Integration auf ganze Sekunden gerundet, beim schnellen
-  Kilometer macht das sichtbar etwas aus (38 s statt 37,7 s: 94,7 statt
-  95,4 km/h).
+  Kilometer macht das sichtbar etwas aus (38 s statt 37,8 s: 94,7 statt
+  95,4 km/h). Seit 0.1.21 speichert die Integration beim Rad zusätzlich
+  Apples Tempo dieses Kilometers (Attribut `speed_kmh`); die Karte
+  „Bestleistungen“ zeigt es direkt. Aus den Sekunden zurückgerechnet wäre
+  z. B. 95,35 km/h zu 95,3 statt wie in den Balken zu 95,4 gerundet.
 - **Meiste Höhenmeter** zu Fuß und Radfahren.
 - **Trainingsserie:** Tage in Folge mit mindestens einem Training, jede
   Sportart, nach Ortszeit. Die laufende Serie zählt bis heute oder gestern,
@@ -589,6 +592,12 @@ HACS zeigt neue Versionen als Update an. Nach dem Herunterladen Home Assistant
 neu starten, danach einmal die Seite neu laden, in der Companion App den
 Frontend-Cache zurücksetzen.
 
+**Update auf 0.1.21:** keine Migration nötig. Beim ersten Start rechnet die
+Integration den schnellsten Kilometer aller Trainings mit Route noch einmal
+und speichert beim Rad Apples Tempo dazu; die Werte in Sekunden bleiben
+gleich. Trainings ohne Route bekommen das Tempo, wenn Health Auto Export sie
+erneut schickt (sie zählen dann einmal unter `geaendert`).
+
 **Update auf 0.1.20:** keine Migration nötig. Beim ersten Start rechnet die
 Integration den schnellsten Kilometer aller Trainings mit Route einmal neu
 (Rad aus dem Tempo von Apple, Nachkommastellen); Trainings ohne Route
@@ -709,7 +718,11 @@ geht ohne Backup, dann prüft der Webhook den Token aber nicht mehr.
 
 ## Teststand
 
-- **0.1.x:** 298 automatische Tests. 0.1.20: schnellster Kilometer beim Rad
+- **0.1.x:** 304 automatische Tests. 0.1.21: Tempo von Apple zum schnellsten
+  Kilometer beim Rad (nur dieser Kilometer, nicht zu Fuß, nicht bei Distanz
+  und Höhenmetern), Karte „Bestleistungen“ zeigt es (95,35 → 95,4 wie die
+  Balken; ohne Tempo Rückfall auf die Sekunden), Attribut `speed_kmh`,
+  einmal neu gerechnet. 0.1.20: schnellster Kilometer beim Rad
   aus dem Tempo von Apple, zu Fuß aus der Zeit, mit Nachkommastellen; einmal
   neu gerechnet nach dem Update (nur mit Details, Version im Speicher, auch
   nach einem Neustart nicht erneut), Sensor mit einer Nachkommastelle, Karte

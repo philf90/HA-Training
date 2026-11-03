@@ -344,19 +344,28 @@ FULL_KM_M = (950.0, 1050.0)
 
 
 # Version der Rechnung in best_km; storage rechnet gespeicherte Trainings
-# einmal neu, wenn sie sich aendert (2 = seit 0.1.20)
-BEST_KM_VERSION = 2
+# einmal neu, wenn sie sich aendert (2 = 0.1.20, 3 = seit 0.1.21 mit km/h)
+BEST_KM_VERSION = 3
 
 
 def best_km(splits: list[dict[str, Any]], use_speed: bool = False) -> float | None:
-    """Schnellster ganzer Kilometer in Sekunden (auf genau 1 km umgerechnet).
+    """Schnellster ganzer Kilometer in Sekunden (auf genau 1 km umgerechnet)."""
+    return best_km_split(splits, use_speed)[0]
+
+
+def best_km_split(
+    splits: list[dict[str, Any]], use_speed: bool = False
+) -> tuple[float | None, float | None]:
+    """Schnellster ganzer Kilometer -> (Sekunden, Tempo von Apple in km/h).
 
     use_speed (Radfahren): aus dem Tempo von Apple, wie die Karte es zeigt;
     active_s ist auf ganze Sekunden gerundet (bei 38 s bis 1,3 % daneben).
-    Sonst (zu Fuss, wie min/km in der Karte) aus aktiver Zeit und Strecke.
-    Drei Nachkommastellen, damit das Tempo daraus wieder auf 0,1 km/h stimmt.
+    Das Tempo selbst kommt mit (0.1.21): aus den Sekunden zurueckgerechnet
+    rundet z. B. 95,35 km/h zu 95,3 statt wie in der Karte zu 95,4.
+    Sonst (zu Fuss, wie min/km in der Karte) aus aktiver Zeit und Strecke;
+    dann und ohne Tempo von Apple ist das zweite Feld None.
     """
-    times: list[float] = []
+    best: tuple[float, float | None] | None = None
     for sp in splits:
         if not (
             isinstance(sp, dict)
@@ -367,10 +376,16 @@ def best_km(splits: list[dict[str, Any]], use_speed: bool = False) -> float | No
         speed = sp.get("speed_kmh")
         active = sp.get("active_s")
         if use_speed and isinstance(speed, (int, float)) and speed > 0:
-            times.append(3600 / speed)
+            item: tuple[float, float | None] = (3600 / speed, float(speed))
         elif isinstance(active, (int, float)) and active > 0:
-            times.append(active * 1000 / sp["distance_m"])
-    return round(min(times), 3) if times else None
+            item = (active * 1000 / sp["distance_m"], None)
+        else:
+            continue
+        if best is None or item[0] < best[0]:
+            best = item
+    if best is None:
+        return None, None
+    return round(best[0], 3), best[1]
 
 
 def parse_workout(raw: Any) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -395,6 +410,7 @@ def parse_workout(raw: Any) -> tuple[dict[str, Any], dict[str, Any]]:
     heart_rate = parse_heart_rate(raw.get("heartRateData"))
     pauses = parse_pauses(raw.get("events"), end)
     splits = parse_splits(raw.get("splits"), heart_rate, pauses)
+    fastest = best_km_split(splits, use_speed=sport_of(raw.get("name")) == CYCLING)
 
     duration = _within(_number(raw.get("duration")), "duration_s")
     elapsed = None
@@ -451,7 +467,8 @@ def parse_workout(raw: Any) -> tuple[dict[str, Any], dict[str, Any]]:
         "pause_s": sum(b - a for a, b in pauses),
         # Fuer die Bestleistung (E4): die Splits verschwinden mit den Details
         # nach der Aufbewahrung, die Zusammenfassung bleibt
-        "best_km_s": best_km(splits, use_speed=sport_of(raw.get("name")) == CYCLING),
+        "best_km_s": fastest[0],
+        "best_km_kmh": fastest[1],
         "route_points": len(route),
         "heart_rate_points": len(heart_rate),
     }
