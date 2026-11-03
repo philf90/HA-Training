@@ -8,6 +8,7 @@ from datetime import datetime
 from unittest.mock import patch
 
 import pytest
+from freezegun.api import FrozenDateTimeFactory
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.exceptions import ServiceValidationError, Unauthorized
 from homeassistant.helpers.storage import Store
@@ -39,7 +40,12 @@ async def _delete(hass, workout_id, **kwargs):
     )
 
 
-async def test_delete_latest_updates_sensors(hass: HomeAssistant, entry, hass_client):
+async def test_delete_latest_updates_sensors(
+    hass: HomeAssistant, entry, hass_client, freezer: FrozenDateTimeFactory
+):
+    # Woche der Testtrainings (30.10.); ohne festes Datum schlug der Test ab
+    # dem 02.11.2026 fehl
+    freezer.move_to("2026-10-31 12:00:00+01:00")
     await _two(hass_client)
     store = entry.runtime_data.store
     assert hass.states.get("sensor.training_workouts_this_week").state == "2"

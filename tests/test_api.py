@@ -76,6 +76,12 @@ async def test_week_sums(
 ):
     # Donnerstag; Montag derselben Woche ist der 26.10.2026
     freezer.move_to("2026-10-29 20:00:00+01:00")
+    # Die Fixture "entry" richtet die Integration zur echten Uhrzeit ein; der
+    # Mitternachts-Timer laege dann nach dem echten Datum und liefe unten nicht
+    # (der Test schlug deshalb ab dem 02.11.2026 fehl). Neu laden plant ihn ab
+    # der eingefrorenen Zeit.
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
     this_week = workout("W1", datetime(2026, 10, 27, 8, 0, tzinfo=TZ))
     also = workout("W2", datetime(2026, 10, 29, 8, 0, tzinfo=TZ))
     last_week = workout("W0", datetime(2026, 10, 25, 8, 0, tzinfo=TZ))

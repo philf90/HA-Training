@@ -110,6 +110,60 @@
       },
       "last_week_active_energy": {
         "name": "Active energy last week"
+      },
+      "week_count_foot": {
+        "name": "Workouts on foot this week"
+      },
+      "week_distance_foot": {
+        "name": "Distance on foot this week"
+      },
+      "week_duration_foot": {
+        "name": "Workout time on foot this week"
+      },
+      "last_week_count_foot": {
+        "name": "Workouts on foot last week"
+      },
+      "last_week_distance_foot": {
+        "name": "Distance on foot last week"
+      },
+      "last_week_duration_foot": {
+        "name": "Workout time on foot last week"
+      },
+      "week_count_cycling": {
+        "name": "Cycling workouts this week"
+      },
+      "week_distance_cycling": {
+        "name": "Cycling distance this week"
+      },
+      "week_duration_cycling": {
+        "name": "Cycling time this week"
+      },
+      "last_week_count_cycling": {
+        "name": "Cycling workouts last week"
+      },
+      "last_week_distance_cycling": {
+        "name": "Cycling distance last week"
+      },
+      "last_week_duration_cycling": {
+        "name": "Cycling time last week"
+      },
+      "week_count_swimming": {
+        "name": "Swimming workouts this week"
+      },
+      "week_distance_swimming": {
+        "name": "Swimming distance this week"
+      },
+      "week_duration_swimming": {
+        "name": "Swimming time this week"
+      },
+      "last_week_count_swimming": {
+        "name": "Swimming workouts last week"
+      },
+      "last_week_distance_swimming": {
+        "name": "Swimming distance last week"
+      },
+      "last_week_duration_swimming": {
+        "name": "Swimming time last week"
       }
     }
   },
