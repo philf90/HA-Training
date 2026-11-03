@@ -443,6 +443,8 @@ class TrainingSensor(TrainingEntity, SensorEntity):
             }
             if key.startswith("best_km"):
                 attributes["tempo"] = pace_text(record["value"])
+                if "kmh" in record:
+                    attributes["speed_kmh"] = record["kmh"]
             return attributes
         if self.entity_description.key != "latest_start":
             return None

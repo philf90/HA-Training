@@ -202,14 +202,15 @@ class TrainingStore:
         """Schnellsten Kilometer nachtragen oder neu rechnen (einmalig).
 
         Fuer Trainings vor 0.1.15 fehlt er; seit 0.1.20 rechnet parser.best_km
-        anders (Rad aus dem Tempo von Apple, Nachkommastellen), deshalb einmal
-        alle neu, wenn BEST_KM_VERSION gestiegen ist. Nur Trainings, die ihre
+        anders (Rad aus dem Tempo von Apple, Nachkommastellen), seit 0.1.21
+        kommt das Tempo dazu (best_km_kmh); deshalb einmal alle neu, wenn
+        BEST_KM_VERSION gestiegen ist. Nur Trainings, die ihre
         Details noch haben; fuer aeltere fehlen die Splits, ihr Wert bleibt.
         Dieselbe Rechnung wie beim Einlesen, damit ein erneut geschicktes
         Training danach als unveraendert gilt.
         -> Anzahl neu gerechneter Trainings
         """
-        from .parser import BEST_KM_VERSION, best_km
+        from .parser import BEST_KM_VERSION, best_km_split
         from .sport import CYCLING, sport_of
 
         async with self._lock:
@@ -221,10 +222,12 @@ class TrainingStore:
             ]
             for workout in todo:
                 detail = await self._detail_store(workout["id"]).async_load() or {}
-                workout["best_km_s"] = best_km(
+                seconds, kmh = best_km_split(
                     detail.get("splits") or [],
                     use_speed=sport_of(workout.get("name")) == CYCLING,
                 )
+                workout["best_km_s"] = seconds
+                workout["best_km_kmh"] = kmh
             if todo or again:
                 self.best_km_version = BEST_KM_VERSION
                 self.revision += 1

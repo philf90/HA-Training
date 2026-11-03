@@ -48,13 +48,19 @@ def is_recent(workout: dict[str, Any]) -> bool:
     return end is not None and dt_util.now() - end <= MAX_AGE
 
 
-def _record(workout: dict[str, Any], value: float) -> dict[str, Any]:
-    return {
+def _record(workout: dict[str, Any], value: float, field: str) -> dict[str, Any]:
+    record = {
         "value": value,
         "workout_id": workout.get("id"),
         "name": workout.get("name"),
         "start": workout.get("start"),
     }
+    # Schnellster Kilometer beim Rad: Tempo von Apple dazu (0.1.21), damit die
+    # Karte nicht aus den Sekunden zurueckrechnet (95,35 -> 95,3 statt 95,4)
+    kmh = workout.get("best_km_kmh")
+    if field == "best_km_s" and isinstance(kmh, (int, float)) and kmh > 0:
+        record["kmh"] = kmh
+    return record
 
 
 def compute(workouts: list[dict[str, Any]], today: date) -> dict[str, Any]:
@@ -80,7 +86,7 @@ def compute(workouts: list[dict[str, Any]], today: date) -> dict[str, Any]:
                 or (not higher and value < current["value"])
                 or (value == current["value"] and _earlier(workout, current))
             ):
-                best[key] = _record(workout, value)
+                best[key] = _record(workout, value, field)
     result: dict[str, Any] = dict(best)
     result[STREAK], result[STREAK_LONGEST] = _streaks(days, today)
     return result

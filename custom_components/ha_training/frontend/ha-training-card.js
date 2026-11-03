@@ -39,7 +39,7 @@
  * damit sie zu den Splits passen.
  */
 
-const VERSION = "0.1.20";
+const VERSION = "0.1.21";
 const LEAFLET = "/ha_training/leaflet";
 const OSM_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>';
@@ -1228,9 +1228,10 @@ class HaTrainingRecordsCard extends HaTrainingCard {
   }
 
   // -> [Wert, Einheit, Zusatz]
-  _recordParts(kind, v) {
+  // kmh: Tempo von Apple (seit 0.1.21), sonst aus den Sekunden gerechnet
+  _recordParts(kind, v, kmh) {
     if (kind === "pace") return [this._duration(v), this._t("perKm"), ""];
-    if (kind === "speed") return [this._num(3600 / v, 1), "km/h", `${this._duration(v)} ${this._t("perKm")}`];
+    if (kind === "speed") return [this._num(kmh > 0 ? kmh : 3600 / v, 1), "km/h", `${this._duration(v)} ${this._t("perKm")}`];
     if (kind === "elevation") return [this._num(v), "m", ""];
     return [this._num(v, 2), "km", ""];
   }
@@ -1257,7 +1258,7 @@ class HaTrainingRecordsCard extends HaTrainingCard {
     const tiles = rows.map(([key, kind]) => {
       const rec = r[key];
       if (!rec?.workout_id) return `<div class="wert"><div class="l">${this._t(`rec_${kind}`)}</div><div class="w">–</div><div class="z">${this._t("noValue")}</div></div>`;
-      const [value, unit, extra] = this._recordParts(kind, rec.value);
+      const [value, unit, extra] = this._recordParts(kind, rec.value, rec.kmh);
       const date = new Date(Date.parse(rec.start)).toLocaleDateString(this._locale(), { day: "2-digit", month: "2-digit", year: "numeric", timeZone: this._hass.config?.time_zone });
       const entity = entities[key];
       const open = entity ? ` role="button" tabindex="0" data-e="${this._escape(entity)}"` : "";
