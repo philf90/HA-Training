@@ -304,24 +304,13 @@ async def test_websocket_records(
     # Keine Koordinaten oder Details
     assert set(result["distance_foot"]) == {"value", "workout_id", "name", "start"}
 
+    # Entitaets-IDs der Sensoren fuer die Karte (Test-Instanz: englisch)
+    entities = result["entities"]
+    assert entities["distance_foot"] == "sensor.training_longest_distance_on_foot"
+    assert entities["best_km_cycling"] == "sensor.training_fastest_cycling_kilometre"
+    assert entities["streak"] == "sensor.training_workout_streak"
+    assert len(entities) == 9
 
-CARD_RECORDS = r"""
-(() => {
-  const root = { innerHTML: "", querySelector: () => null, querySelectorAll: () => [] };
-  const card = new HaTrainingCard();
-  card.shadowRoot = { getElementById: (id) => (id === "inhalt" ? root : null) };
-  card._config = CONFIG;
-  card._hass = { language: "de", locale: { language: "de" }, config: { time_zone: "Europe/Berlin" }, user: { is_admin: false } };
-  card._summary = { id: "G", name: "Outdoor Spaziergang", start: "2026-10-31T15:30:04+01:00", sport: "foot" };
-  card._workouts = [card._summary];
-  card._current = "G";
-  card._points = [];
-  card._detail = null;
-  card._records = RECORDS;
-  card._render();
-  return root.innerHTML;
-})()
-"""
 
 RECORDS = {
     "distance_foot": {
@@ -353,48 +342,166 @@ RECORDS = {
     "distance_swimming": None,
     "streak": 1,
     "streak_longest": 3,
+    "entities": {
+        "distance_foot": "sensor.training_langste_distanz_zu_fuss",
+        "best_km_cycling": "sensor.x",
+    },
 }
 
+CARD = r"""
+(() => {
+  const buttons = {};
+  const root = {
+    innerHTML: "",
+    querySelectorAll: (sel) => (buttons[sel] || []),
+  };
+  const events = [];
+  const card = new HaTrainingRecordsCard();
+  card.shadowRoot = { getElementById: (id) => (id === "inhalt" ? root : null) };
+  card.dispatchEvent = (e) => events.push([e.type, e.detail]);
+  card._config = CONFIG;
+  card._sport = CONFIG.sport || null;
+  card._hass = { language: "de", locale: { language: "de" }, config: { time_zone: "Europe/Berlin" } };
+  card._records = RECORDS;
+  card._render();
+  const html1 = root.innerHTML;
+  // Umschalten auf ACTION und Kachel antippen (erste mit data-e)
+  const match = [...html1.matchAll(/data-s="(\w+)"/g)].map((m) => m[1]);
+  card._sport = ACTION;
+  card._render();
+  return { html1, html2: root.innerHTML, tabs: match, sport: card._sport };
+})()
+"""
 
-def _card_html(records=RECORDS, config=None):
+
+def _records_card(records=RECORDS, config=None, action="null"):
     import json
 
     from .test_karte import js
 
     return js(
-        CARD_RECORDS.replace("RECORDS", json.dumps(records)).replace(
-            "CONFIG", json.dumps(config or {})
-        )
+        CARD.replace("RECORDS", json.dumps(records))
+        .replace("CONFIG", json.dumps(config or {}))
+        .replace("ACTION", action)
     )
 
 
-def test_card_records_section():
-    html = _card_html()
-    assert "Bestleistungen" in html
-    section = html[html.index("Bestleistungen") :]
-    assert "Längste Distanz zu Fuß</td><td>2,91 <small>km</small>" in section
-    assert "Schnellster Kilometer zu Fuß</td><td>20:43 <small>min/km</small>" in section
-    # Rad: km/h vorne, min/km darunter (120 s/km = 30 km/h)
-    assert "30,0 <small>km/h</small><br><small>2:00 min/km</small>" in section
-    # Ohne Wert keine Zeile
-    assert "Höhenmeter" not in section and "Schwimmen" not in section
-    # Datum als Verweis auf das Training; das gezeigte ist markiert
-    assert 'data-w="R"' in section and 'data-w="G"' in section
-    assert section.count('aria-current="true"') == 2  # beide Zeilen von G
-    assert "31.10.2026" in section and "03.11.2026" in section
-    # Serie mit Einzahl und Mehrzahl
-    assert "1 Tag</td>" in section and "längste 3 Tage" in section
+def test_records_card_tiles_per_sport():
+    got = _records_card(action='"cycling"')
+    html = got["html1"]
+    # Kopf mit Symbol, Titel und Serie
+    assert 'icon="mdi:trophy"' in html and "<h2>Bestleistungen</h2>" in html
+    assert "Serie 1 Tag · längste 3 Tage" in html
+    # Nur Sportarten mit Bestleistung; zu Beginn die erste
+    assert got["tabs"] == ["foot", "cycling"]
+    assert 'data-s="foot" aria-pressed="true"' in html
+    # Kacheln zu Fuss: Distanz, schnellster km als min/km, Hoehenmeter ohne Wert
+    assert 'Längste Distanz</div><div class="w">2,91<small>km</small>' in html
+    assert (
+        'Schnellster Kilometer</div><div class="w">20:43<small>min/km</small>' in html
+    )
+    assert (
+        'Meiste Höhenmeter</div><div class="w">–</div><div class="z">noch kein Wert'
+        in html
+    )
+    assert "31.10.2026" in html
+    # Kachel mit Sensor ist antippbar, ohne Sensor-ID nicht
+    assert 'data-e="sensor.training_langste_distanz_zu_fuss"' in html
+    assert html.count('role="button"') == 1
+    # Rad: km/h vorne, min/km und Datum darunter
+    cycling = got["html2"]
+    assert 'data-s="cycling" aria-pressed="true"' in cycling
+    assert "30,0<small>km/h</small>" in cycling
+    assert "2:00 min/km · 03.11.2026" in cycling
 
 
-def test_card_records_hidden():
-    # Ohne Daten (aeltere Integration oder records: false) kein Abschnitt
-    assert "Bestleistungen" not in _card_html(records=None)
-    empty = dict.fromkeys(RECORDS)
+def test_records_card_start_sport_and_fallback():
+    assert (
+        'data-s="cycling" aria-pressed="true"'
+        in _records_card(config={"sport": "cycling"})["html1"]
+    )
+    # Sportart ohne Bestleistung (Schwimmen): erste vorhandene
+    assert (
+        'data-s="foot" aria-pressed="true"'
+        in _records_card(config={"sport": "swimming"})["html1"]
+    )
+
+
+def test_records_card_without_records():
+    empty = {key: None for key in RECORDS if key != "entities"}
     empty.update(streak=0, streak_longest=0)
-    assert "Bestleistungen" not in _card_html(records=empty)
+    html = _records_card(records=empty)["html1"]
+    assert "Noch keine Bestleistungen" in html
+    assert "data-s=" not in html and "Serie" not in html
 
 
-def test_card_does_not_fetch_records_when_disabled():
+def test_records_card_opens_more_info():
+    from .test_karte import js
+
+    got = js(
+        r"""
+(() => {
+  // In Node gibt es kein CustomEvent; im Browser schon
+  globalThis.CustomEvent = class { constructor(type, init) { this.type = type; Object.assign(this, init); } };
+  const handlers = {};
+  const tile = { dataset: { e: "sensor.training_langste_distanz_zu_fuss" }, addEventListener: (t, fn) => { handlers[t] = fn; } };
+  const root = { innerHTML: "", querySelectorAll: (sel) => (sel === "[data-e]" ? [tile] : []) };
+  const events = [];
+  const card = new HaTrainingRecordsCard();
+  card.shadowRoot = { getElementById: () => root };
+  card.dispatchEvent = (e) => events.push({ type: e.type, detail: e.detail, bubbles: e.bubbles, composed: e.composed });
+  card._config = {};
+  card._hass = { language: "de", locale: { language: "de" }, config: { time_zone: "Europe/Berlin" } };
+  card._records = RECORDS;
+  card._render();
+  handlers.click();
+  handlers.keydown({ key: "Enter", preventDefault() {} });
+  handlers.keydown({ key: "a", preventDefault() {} });
+  return events;
+})()
+""".replace("RECORDS", __import__("json").dumps(RECORDS))
+    )
+    assert (
+        got
+        == [
+            {
+                "type": "hass-more-info",
+                "detail": {"entityId": "sensor.training_langste_distanz_zu_fuss"},
+                "bubbles": True,
+                "composed": True,
+            }
+        ]
+        * 2
+    )
+
+
+def test_records_card_reloads_on_change_and_new_day():
+    from .test_karte import js
+
+    got = js(
+        r"""
+(async () => {
+  let calls = 0;
+  const card = new HaTrainingRecordsCard();
+  card.shadowRoot = { getElementById: () => null };
+  card._config = {};
+  card._watchKey = () => card.__key;
+  card.__key = "A|0";
+  const hass = { config: { time_zone: "Europe/Berlin" }, callWS: async () => { calls += 1; return {}; } };
+  card.hass = hass;
+  await new Promise((r) => setTimeout(r, 0));
+  card.hass = hass;  // unveraendert: kein Abruf
+  card.__key = "A|1";  // neue revision
+  card.hass = hass;
+  await new Promise((r) => setTimeout(r, 0));
+  return calls;
+})()
+"""
+    )
+    assert got == 2
+
+
+def test_training_card_no_longer_fetches_records():
     from .test_karte import js
 
     got = js(
@@ -403,49 +510,12 @@ def test_card_does_not_fetch_records_when_disabled():
   const calls = [];
   const card = new HaTrainingCard();
   card.shadowRoot = { getElementById: () => null, querySelector: () => null, querySelectorAll: () => [] };
-  card._config = CONFIG;
+  card._config = {};
   card._render = () => {};
   card._hass = { callWS: async (req) => { calls.push(req.type); return req.type === "ha_training/workouts" ? { workouts: [] } : {}; } };
   await card._loadList();
   return calls;
 })()
-""".replace("CONFIG", '{"records": false}')
-    )
-    assert "ha_training/records" not in got
-
-
-def test_card_click_on_record_loads_workout():
-    from .test_karte import js
-
-    got = js(
-        r"""
-(async () => {
-  const buttons = [];
-  const root = {
-    innerHTML: "",
-    querySelector: () => null,
-    querySelectorAll: (sel) => (sel === "[data-w]" ? [{ dataset: { w: "R" }, addEventListener: (_, fn) => buttons.push(fn) }] : []),
-  };
-  const calls = [];
-  const card = new HaTrainingCard();
-  card.shadowRoot = { getElementById: (id) => (id === "inhalt" ? root : null) };
-  card._config = {};
-  card._hass = { language: "de", locale: { language: "de" }, config: { time_zone: "Europe/Berlin" }, user: { is_admin: false },
-    callWS: async (req) => { calls.push(req); return { summary: { id: req.workout_id, name: "y", start: "2026-11-03T08:11:44+01:00" }, detail: null }; } };
-  card._summary = { id: "G", name: "x", start: "2026-10-31T15:30:04+01:00" };
-  card._workouts = [card._summary];
-  card._current = "G";
-  card._points = [];
-  card._detail = null;
-  card._records = null;
-  card._render();
-  card._render = () => {};
-  buttons[0]();
-  await new Promise((r) => setTimeout(r, 0));
-  return { selected: card._selected, current: card._current, calls: calls.map((c) => [c.type, c.workout_id]) };
-})()
 """
     )
-    assert got["selected"] == "R"
-    assert got["current"] == "R"
-    assert got["calls"] == [["ha_training/workout", "R"]]
+    assert got == ["ha_training/workouts"]
