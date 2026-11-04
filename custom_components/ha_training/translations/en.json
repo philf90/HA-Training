@@ -226,6 +226,28 @@
           "description": "ID of the deleted workout."
         }
       }
+    },
+    "get_workouts": {
+      "name": "Get workouts",
+      "description": "Returns the summaries of stored workouts (no route) with totals, for scripts, reports and voice assistants. Newest first.",
+      "fields": {
+        "start": {
+          "name": "From",
+          "description": "Only workouts that started at or after this time. Without a time zone the one of Home Assistant applies."
+        },
+        "end": {
+          "name": "Until",
+          "description": "Only workouts that started before this time."
+        },
+        "sport": {
+          "name": "Sport",
+          "description": "Only this sport group (detected from the workout name)."
+        },
+        "limit": {
+          "name": "Maximum",
+          "description": "Number of workouts in the response (1–500); the totals cover all matches."
+        }
+      }
     }
   },
   "exceptions": {
@@ -237,6 +259,19 @@
     },
     "workout_not_deleted": {
       "message": "The workout {workout_id} is not on the list of deleted workouts."
+    },
+    "invalid_period": {
+      "message": "The end of the period must be after its start."
+    }
+  },
+  "selector": {
+    "sport": {
+      "options": {
+        "foot": "On foot",
+        "cycling": "Cycling",
+        "swimming": "Swimming",
+        "other": "Other"
+      }
     }
   }
 }

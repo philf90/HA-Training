@@ -149,6 +149,9 @@
     },
     "undelete_workout": {
       "service": "mdi:restore"
+    },
+    "get_workouts": {
+      "service": "mdi:clipboard-text-search-outline"
     }
   }
 }

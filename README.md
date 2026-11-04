@@ -14,7 +14,7 @@ dieser Integration. Home Assistant speichert die Trainings privat, zeigt das
 letzte Training und die Woche als Sensoren und meldet neue Trainings als
 Ereignis. Die mitgelieferte Karte zeichnet die Route auf einer Karte, nach
 Tempo oder Puls eingefärbt, mit gekoppeltem Verlauf und Kilometer-Balken.
-Version 0.1.22.
+Version 0.1.23.
 
 ## Inhalt
 
@@ -29,6 +29,7 @@ Version 0.1.22.
 - [Monat und Jahr (Langzeitstatistik)](#monat-und-jahr-langzeitstatistik)
 - [Karte „Training“](#karte-training)
 - [Karte „Bestleistungen“](#karte-bestleistungen)
+- [Trainings abfragen](#trainings-abfragen)
 - [Training löschen](#training-löschen)
 - [GPX-Export](#gpx-export)
 - [Aktualisieren](#aktualisieren)
@@ -537,6 +538,49 @@ ohne Option.
   alle angemeldeten Konten, ohne Route). Die Karte lädt neu, wenn ein Training
   dazukommt, sich ändert oder gelöscht wird, und am nächsten Tag (Serie).
 
+## Trainings abfragen
+
+Seit 0.1.23 liefert die Aktion `ha_training.get_workouts` die gespeicherten
+Trainings als Antwort, z. B. für Skripte, Berichte oder einen
+Sprachassistenten. Sie enthält nur die Zusammenfassungen (dieselben Werte wie
+die Sensoren), keine Route und keine Verläufe, und steht deshalb allen
+angemeldeten Konten offen, nicht nur Administratoren.
+
+```yaml
+action: ha_training.get_workouts
+data:
+  start: "2026-11-01 00:00:00"   # optional, ab diesem Zeitpunkt (Beginn des Trainings)
+  end: "2026-11-08 00:00:00"     # optional, vor diesem Zeitpunkt
+  sport: cycling                 # optional: foot, cycling, swimming, other
+  limit: 30                      # optional, 1 bis 500, Standard 30
+response_variable: trainings
+```
+
+- Zeitraum: Ein Training zählt, wenn es ab `start` und vor `end` begonnen hat.
+  Zeiten ohne Zeitzone (wie im Auswahlfeld) gelten in der Zeitzone von Home
+  Assistant. Endet der Zeitraum nicht nach seinem Beginn, gibt es einen Fehler.
+- Antwort: `workouts` (neuestes zuerst, höchstens `limit`, jedes mit `sport`),
+  `count` (Anzahl in `workouts`) und `totals` über alle Treffer, auch die
+  hinter `limit`: `workouts`, `distance_km`, `duration_s`, `active_kcal`,
+  `elevation_up_m`.
+- Die Aktion lässt sich nur mit Antwort aufrufen (im Skript mit
+  `response_variable`, unter Entwicklerwerkzeuge → Aktionen mit „Antwort
+  anzeigen“).
+
+Beispiel für eine Nachricht mit den Kilometern der Woche:
+
+```yaml
+- action: ha_training.get_workouts
+  data:
+    start: "{{ (now() - timedelta(days=now().weekday())).strftime('%Y-%m-%d 00:00:00') }}"
+  response_variable: woche
+- action: notify.notify
+  data:
+    message: >-
+      Diese Woche: {{ woche.totals.workouts }} Trainings,
+      {{ woche.totals.distance_km | round(1) }} km
+```
+
 ## Training löschen
 
 Zum Beispiel ein Testtraining oder eine Fehlaufzeichnung. Löschen dürfen nur
@@ -591,6 +635,9 @@ freigegebene Konten nur den Teil außerhalb der Zone.
 HACS zeigt neue Versionen als Update an. Nach dem Herunterladen Home Assistant
 neu starten, danach einmal die Seite neu laden, in der Companion App den
 Frontend-Cache zurücksetzen.
+
+**Update auf 0.1.23:** keine Migration. Neue Aktion
+`ha_training.get_workouts` (siehe [Trainings abfragen](#trainings-abfragen)).
 
 **Update auf 0.1.22:** keine Migration nötig, die Integration erledigt sie
 selbst: Beim ersten Start speichert sie den Index als Version 1.2. Kommst du
@@ -730,7 +777,11 @@ geht ohne Backup, dann prüft der Webhook den Token aber nicht mehr.
 
 ## Teststand
 
-- **0.1.x:** 305 automatische Tests. 0.1.22: Migration des Index über Home
+- **0.1.x:** 314 automatische Tests. 0.1.23: Aktion `get_workouts` (Zeitraum
+  mit Beginn inklusive und Ende exklusive, Zeiten ohne Zone in der Zone von
+  Home Assistant, Sportart, Begrenzung mit Summen über alle Treffer, ohne
+  Route, für Konten ohne Adminrechte, nur mit Antwort, Fehler bei leerem
+  Zeitraum). 0.1.22: Migration des Index über Home
   Assistant (neu als 1.2; aus 0.1.19, 0.1.20 und 0.1.21 jeweils richtig, nur
   einmal, ohne Details bleibt der Wert, ältere Versionen lesen 1.2, unbekannte
   Hauptversion wird abgelehnt). 0.1.21: Tempo von Apple zum schnellsten
