@@ -226,6 +226,28 @@
           "description": "ID des gelöschten Trainings."
         }
       }
+    },
+    "get_workouts": {
+      "name": "Trainings abfragen",
+      "description": "Liefert die Zusammenfassungen gespeicherter Trainings (ohne Route) mit Summen, für Skripte, Berichte und Sprachassistenten. Neuestes zuerst.",
+      "fields": {
+        "start": {
+          "name": "Ab",
+          "description": "Nur Trainings, die zu diesem Zeitpunkt oder später begonnen haben. Ohne Zeitzone gilt die von Home Assistant."
+        },
+        "end": {
+          "name": "Bis",
+          "description": "Nur Trainings, die vor diesem Zeitpunkt begonnen haben."
+        },
+        "sport": {
+          "name": "Sportart",
+          "description": "Nur diese Sportgruppe (erkannt am Namen des Trainings)."
+        },
+        "limit": {
+          "name": "Höchstens",
+          "description": "Anzahl der Trainings in der Antwort (1–500); die Summen zählen alle Treffer."
+        }
+      }
     }
   },
   "exceptions": {
@@ -237,6 +259,19 @@
     },
     "workout_not_deleted": {
       "message": "Das Training {workout_id} steht nicht auf der Liste der gelöschten Trainings."
+    },
+    "invalid_period": {
+      "message": "Das Ende des Zeitraums muss nach seinem Beginn liegen."
+    }
+  },
+  "selector": {
+    "sport": {
+      "options": {
+        "foot": "Zu Fuß",
+        "cycling": "Radfahren",
+        "swimming": "Schwimmen",
+        "other": "Sonstige"
+      }
     }
   }
 }
