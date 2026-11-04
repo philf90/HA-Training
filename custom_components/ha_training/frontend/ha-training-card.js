@@ -39,7 +39,7 @@
  * damit sie zu den Splits passen.
  */
 
-const VERSION = "0.1.23";
+const VERSION = "0.1.24";
 const LEAFLET = "/ha_training/leaflet";
 const OSM_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>';

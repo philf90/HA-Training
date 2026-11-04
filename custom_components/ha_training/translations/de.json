@@ -273,5 +273,19 @@
         "other": "Sonstige"
       }
     }
+  },
+  "issues": {
+    "webhook_unauthorized": {
+      "title": "Health Auto Export wird abgelehnt: Token fehlt oder ist falsch",
+      "description": "Der Webhook der Integration Training hat {count} Übertragung(en) abgelehnt, weil der Token fehlte oder falsch war (zuletzt: {last}). Es wurden keine Trainings gespeichert.\n\nIn Health Auto Export den Header der Automation prüfen: `Authorization` mit dem Wert `Bearer`, Leerzeichen, dann der Token aus „Konfigurieren“. Dieser Hinweis verschwindet mit der nächsten angenommenen Übertragung."
+    },
+    "webhook_invalid_json": {
+      "title": "Health Auto Export sendet kein JSON",
+      "description": "Der Webhook der Integration Training hat {count} Übertragung(en) abgelehnt, weil der Inhalt kein JSON war (zuletzt: {last}). Es wurden keine Trainings gespeichert.\n\nIn Health Auto Export das Exportformat der Automation auf JSON stellen. Dieser Hinweis verschwindet mit der nächsten angenommenen Übertragung."
+    },
+    "webhook_too_many": {
+      "title": "Health Auto Export sendet zu viele Trainings auf einmal",
+      "description": "Der Webhook der Integration Training hat {count} Übertragung(en) mit mehr als {limit} Trainings abgelehnt (zuletzt: {last}). Es wurden keine Trainings gespeichert.\n\nIn Health Auto Export einen kürzeren Zeitraum exportieren, z. B. mit mehreren Manual Uploads. Dieser Hinweis verschwindet mit der nächsten angenommenen Übertragung."
+    }
   }
 }
