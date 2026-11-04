@@ -28,7 +28,7 @@ from homeassistant.helpers.dispatcher import (
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_integration
 
-from . import rekorde
+from . import hinweise, rekorde
 from .const import (
     CARD,
     CARD_PATH,
@@ -176,6 +176,7 @@ async def _async_handle_webhook(
     # Vor dem Lesen des Inhalts: Ohne Token wird nichts geparst
     if not _token_ok(entry, request):
         _LOGGER.warning("Webhook: Aufruf ohne gueltigen Token abgelehnt")
+        hinweise.async_rejected(hass, "unauthorized")
         return web.json_response(
             {"error": "unauthorized", "fehler": "token fehlt oder falsch"},
             status=401,
@@ -188,12 +189,14 @@ async def _async_handle_webhook(
         parsed, rejected = await hass.async_add_executor_job(decode_and_parse, body)
     except PayloadError as err:
         # "error": fester Code (englisch, aendert sich nicht), "fehler": Text
+        hinweise.async_rejected(hass, err.error, err.limit)
         if err.limit is not None:
             return web.json_response(
                 {"error": err.error, "fehler": err.text, "maximal": err.limit},
                 status=413,
             )
         return web.json_response({"error": err.error, "fehler": err.text}, status=400)
+    hinweise.async_accepted(hass)
     store = entry.runtime_data.store
     before = rekorde.cached(store)
     new, updated, skipped = await store.async_add(parsed)

@@ -14,7 +14,7 @@ dieser Integration. Home Assistant speichert die Trainings privat, zeigt das
 letzte Training und die Woche als Sensoren und meldet neue Trainings als
 Ereignis. Die mitgelieferte Karte zeichnet die Route auf einer Karte, nach
 Tempo oder Puls eingefärbt, mit gekoppeltem Verlauf und Kilometer-Balken.
-Version 0.1.23.
+Version 0.1.24.
 
 ## Inhalt
 
@@ -24,6 +24,7 @@ Version 0.1.23.
 - [Health Auto Export einstellen](#health-auto-export-einstellen)
 - [Webhook mit Token absichern](#webhook-mit-token-absichern)
 - [Adresse oder Token erneuern](#adresse-oder-token-erneuern)
+- [Hinweise unter „Reparaturen“](#hinweise-unter-reparaturen)
 - [Entitäten](#entitäten)
 - [Bestleistungen](#bestleistungen)
 - [Monat und Jahr (Langzeitstatistik)](#monat-und-jahr-langzeitstatistik)
@@ -212,6 +213,26 @@ gelten sofort nicht mehr; die gespeicherten Trainings bleiben erhalten. Die
 neuen Werte danach in der Automation von Health Auto Export eintragen (URL
 bzw. Header-Wert) und wie oben testen. Bis dahin kann die App nicht liefern;
 was sie in der Zeit nicht schicken konnte, holt **Manual Upload** nach.
+
+## Hinweise unter „Reparaturen“
+
+Lehnt der Webhook eine Übertragung ab, geht die Fehlermeldung nur an Health
+Auto Export zurück. Seit 0.1.24 legt die Integration dann zusätzlich einen
+Hinweis unter Einstellungen → System → Reparaturen an, damit eine falsche
+Einstellung in der App nicht erst auffällt, wenn Trainings ausbleiben:
+
+| Hinweis | Ursache (Antwort des Webhooks) | Abhilfe in Health Auto Export |
+|---|---|---|
+| Token fehlt oder ist falsch | HTTP 401 `unauthorized` | Header `Authorization: Bearer <token>` prüfen (siehe [oben](#webhook-mit-token-absichern)) |
+| Sendet kein JSON | HTTP 400 `invalid_json` | Exportformat der Automation auf JSON stellen |
+| Zu viele Trainings auf einmal | HTTP 413 `too_many_workouts` (mehr als 1000) | Kürzeren Zeitraum exportieren |
+
+- Der Hinweis zählt die Ablehnungen und nennt die letzte (Uhrzeit von Home
+  Assistant). Er bleibt über einen Neustart erhalten und verschwindet mit der
+  nächsten angenommenen Übertragung von selbst.
+- Er enthält weder Webhook-Adresse noch Token noch Inhalte.
+- Kommt gar keine Übertragung an (App-Automation aus, Handy offline, falsche
+  Adresse), sieht Home Assistant nichts davon; dafür gibt es keinen Hinweis.
 
 ## Entitäten
 
@@ -636,6 +657,10 @@ HACS zeigt neue Versionen als Update an. Nach dem Herunterladen Home Assistant
 neu starten, danach einmal die Seite neu laden, in der Companion App den
 Frontend-Cache zurücksetzen.
 
+**Update auf 0.1.24:** keine Migration. Neu sind Hinweise unter „Reparaturen“
+bei abgelehnten Übertragungen (siehe
+[Hinweise unter „Reparaturen“](#hinweise-unter-reparaturen)).
+
 **Update auf 0.1.23:** keine Migration. Neue Aktion
 `ha_training.get_workouts` (siehe [Trainings abfragen](#trainings-abfragen)).
 
@@ -777,7 +802,10 @@ geht ohne Backup, dann prüft der Webhook den Token aber nicht mehr.
 
 ## Teststand
 
-- **0.1.x:** 314 automatische Tests. 0.1.23: Aktion `get_workouts` (Zeitraum
+- **0.1.x:** 321 automatische Tests. 0.1.24: Hinweise unter „Reparaturen“
+  (Token, kein JSON, zu viele Trainings; Zähler auch nach Neuladen, Fehler-
+  stufe, bleibt über Neustart, verschwindet nach angenommener Übertragung,
+  ohne Webhook-ID und Token, Platzhalter in allen Sprachen). 0.1.23: Aktion `get_workouts` (Zeitraum
   mit Beginn inklusive und Ende exklusive, Zeiten ohne Zone in der Zone von
   Home Assistant, Sportart, Begrenzung mit Summen über alle Treffer, ohne
   Route, für Konten ohne Adminrechte, nur mit Antwort, Fehler bei leerem

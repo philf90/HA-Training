@@ -273,5 +273,19 @@
         "other": "Other"
       }
     }
+  },
+  "issues": {
+    "webhook_unauthorized": {
+      "title": "Health Auto Export is rejected: token missing or wrong",
+      "description": "The webhook of the Training integration rejected {count} upload(s) because the token was missing or wrong (last one: {last}). No workouts were stored.\n\nIn Health Auto Export, check the header of the automation: `Authorization` with the value `Bearer` followed by the token from \"Configure\". This notice disappears with the next accepted upload."
+    },
+    "webhook_invalid_json": {
+      "title": "Health Auto Export does not send JSON",
+      "description": "The webhook of the Training integration rejected {count} upload(s) because the content was not JSON (last one: {last}). No workouts were stored.\n\nIn Health Auto Export, set the export format of the automation to JSON. This notice disappears with the next accepted upload."
+    },
+    "webhook_too_many": {
+      "title": "Health Auto Export sends too many workouts at once",
+      "description": "The webhook of the Training integration rejected {count} upload(s) with more than {limit} workouts (last one: {last}). No workouts were stored.\n\nIn Health Auto Export, export a shorter period, e.g. several manual uploads. This notice disappears with the next accepted upload."
+    }
   }
 }
