@@ -44,6 +44,10 @@ Version 0.1.24.
 ## Voraussetzungen
 
 - Home Assistant 2026.2.3 oder neuer.
+- Für die Installation per Klick ab Home Assistant 2026.11 der eingebaute
+  Marketplace, bis 2026.10 [HACS](https://hacs.xyz); ohne beides von Hand.
+  Der Marketplace braucht für Repositories, die nicht im Katalog stehen,
+  eine GitHub-Verbindung; er fragt beim Hinzufügen danach.
 - iPhone mit [Health Auto Export – JSON+CSV](https://apps.apple.com/app/id1115567069)
   und Premium: Nur damit sendet die App automatisch („Automations“).
 - Für die Übertragung von unterwegs eine von außen erreichbare Adresse von
@@ -51,7 +55,17 @@ Version 0.1.24.
 
 ## Installation
 
-Über HACS als benutzerdefiniertes Repository:
+**Ab Home Assistant 2026.11 über den Marketplace:**
+
+1. Einstellungen → **Marketplace** → oben rechts **Add from link** →
+   `https://github.com/philf90/HA-Training` eingeben → **Add**. Beim ersten
+   Hinzufügen verbindet der Marketplace GitHub: Er zeigt einen Code und einen
+   Link, dort den Code eingeben und die Verbindung bestätigen.
+2. „Training“ in der Liste öffnen und installieren. Ein Neustart ist bei der
+   ersten Installation nicht nötig: Der Marketplace lädt die Integration
+   sofort und öffnet ihre Einrichtung (siehe [Einrichtung](#einrichtung)).
+
+**Bis 2026.10 über HACS** als benutzerdefiniertes Repository:
 
 1. HACS → Drei-Punkte-Menü → Benutzerdefinierte Repositories →
    `https://github.com/philf90/HA-Training`, Typ „Integration“.
@@ -448,7 +462,8 @@ days_to_show: 365
 ## Karte „Training“
 
 Die Integration liefert die Karte selbst aus und lädt sie im Frontend; eine
-Dashboard-Ressource oder weitere HACS-Karten sind nicht nötig.
+Dashboard-Ressource oder weitere Karten aus dem Marketplace (HACS) sind nicht
+nötig.
 
 ```yaml
 type: custom:ha-training-card
@@ -653,8 +668,13 @@ freigegebene Konten nur den Teil außerhalb der Zone.
 
 ## Aktualisieren
 
-HACS zeigt neue Versionen als Update an. Nach dem Herunterladen Home Assistant
-neu starten, danach einmal die Seite neu laden, in der Companion App den
+Neue Versionen erscheinen als Update unter Einstellungen → Updates, ab
+Home Assistant 2026.11 über den Marketplace, davor über HACS. Der
+Marketplace prüft Repositories außerhalb des Katalogs nur mit
+GitHub-Verbindung, alle 48 Stunden. Nach dem Installieren eines Updates
+Home Assistant neu starten; der Marketplace erinnert unter „Reparaturen“
+daran.
+Danach einmal die Seite neu laden, in der Companion App den
 Frontend-Cache zurücksetzen.
 
 **Update auf 0.1.24:** keine Migration. Neu sind Hinweise unter „Reparaturen“
